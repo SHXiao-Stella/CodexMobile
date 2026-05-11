@@ -11,7 +11,8 @@ import {
 import {
   browserPushSupported,
   notificationEnablementMessage,
-  registerWebPush
+  registerWebPush,
+  webPushCanRegister
 } from '../web-push-client.js';
 
 export function useNotifications() {
@@ -92,7 +93,7 @@ export function useNotifications() {
     const pushSupported = browserPushSupported();
     const standalone = isStandalonePwa();
     const secureContext = Boolean(window.isSecureContext);
-    if (!pushSupported || !secureContext || !standalone) {
+    if (!webPushCanRegister({ supported: pushSupported, secureContext })) {
       showToast({
         level: 'warning',
         title: '通知不可用',

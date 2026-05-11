@@ -3,7 +3,8 @@ import test from 'node:test';
 import {
   browserPushSupported,
   notificationEnablementMessage,
-  urlBase64ToUint8Array
+  urlBase64ToUint8Array,
+  webPushCanRegister
 } from './web-push-client.js';
 
 test('urlBase64ToUint8Array converts a VAPID public key into bytes', () => {
@@ -21,6 +22,12 @@ test('browserPushSupported requires service worker, PushManager, and Notificatio
     PushManager: function PushManager() {},
     Notification: { requestPermission() {} }
   }), false);
+});
+
+test('webPushCanRegister allows Android HTTPS browser tabs without PWA standalone mode', () => {
+  assert.equal(webPushCanRegister({ supported: true, secureContext: true, standalone: false }), true);
+  assert.equal(webPushCanRegister({ supported: true, secureContext: false, standalone: false }), false);
+  assert.equal(webPushCanRegister({ supported: false, secureContext: true, standalone: false }), false);
 });
 
 test('notificationEnablementMessage explains iOS PWA secure-context requirements', () => {

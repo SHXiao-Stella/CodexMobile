@@ -18,6 +18,13 @@ export function browserPushSupported(win = globalThis.window) {
   );
 }
 
+export function webPushCanRegister({
+  supported = false,
+  secureContext = false
+} = {}) {
+  return Boolean(supported && secureContext);
+}
+
 export function notificationEnablementMessage({
   supported = false,
   secureContext = false,
