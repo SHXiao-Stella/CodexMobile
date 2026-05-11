@@ -638,7 +638,6 @@ export function Composer({
               aria-label={`Mode: ${composerModeLabel(composerMode)}`}
             >
               <MessageSquare size={15} strokeWidth={1.9} />
-              <span>{composerModeLabel(composerMode)}</span>
             </button>
             <button
               type="button"
