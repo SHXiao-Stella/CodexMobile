@@ -8,6 +8,7 @@ import {
   upsertStatusMessage
 } from '../chat/activity-model.js';
 import { sameUserMessageContent } from '../chat/message-identity.js';
+import { markUserInputMessageResolved, upsertUserInputMessage } from '../notification-events.js';
 import { mergeContextStatus, normalizeContextStatus } from './context-status.js';
 
 const EXTERNAL_THREAD_SOURCES = new Set(['desktop-ipc', 'desktop-thread', 'headless-local']);
@@ -304,6 +305,19 @@ export function useAppWebSocket({
             return;
           }
           setMessages((current) => upsertActivityMessage(current, payload));
+          return;
+        }
+        if (payload.type === 'user-input-request') {
+          notifyFromPayload(payload);
+          if (payloadMatchesCurrentConversation(payload)) {
+            setMessages((current) => upsertUserInputMessage(current, payload));
+          }
+          return;
+        }
+        if (payload.type === 'user-input-resolved') {
+          if (payloadMatchesCurrentConversation(payload)) {
+            setMessages((current) => markUserInputMessageResolved(current, payload));
+          }
           return;
         }
         if (payload.type === 'context-status-update') {

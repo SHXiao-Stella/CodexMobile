@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  markUserInputMessageResolved,
   notificationFromPayload,
   payloadNeedsUserInput,
-  shouldUseWebNotification
+  shouldUseWebNotification,
+  upsertUserInputMessage
 } from './notification-events.js';
 
 test('notificationFromPayload creates completion and failure toasts', () => {
@@ -30,4 +32,23 @@ test('shouldUseWebNotification only fires when permission and context allow it',
   assert.equal(shouldUseWebNotification({ enabled: true, permission: 'granted', visibilityState: 'visible', standalone: true }), true);
   assert.equal(shouldUseWebNotification({ enabled: true, permission: 'default', visibilityState: 'hidden' }), false);
   assert.equal(shouldUseWebNotification({ enabled: false, permission: 'granted', visibilityState: 'hidden' }), false);
+});
+
+test('user input messages are upserted and marked answered by request identity', () => {
+  const request = {
+    type: 'user-input-request',
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    itemId: 'item-1',
+    questions: [{ id: 'choice', question: 'Continue?' }],
+    timestamp: '2026-05-11T00:00:00.000Z'
+  };
+  const inserted = upsertUserInputMessage([], request);
+  assert.equal(inserted.length, 1);
+  assert.equal(inserted[0].role, 'user_input_request');
+  assert.equal(inserted[0].sessionId, 'thread-1');
+  assert.equal(inserted[0].status, 'pending');
+
+  const updated = markUserInputMessageResolved(inserted, request);
+  assert.equal(updated[0].status, 'answered');
 });

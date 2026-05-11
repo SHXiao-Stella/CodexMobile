@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { apiFetch, getToken } from '../api.js';
+import { normalizeComposerMode } from '../composer-shortcuts.js';
 import { DEFAULT_PERMISSION_MODE } from '../composer/Composer.jsx';
 import { DEFAULT_MODEL_SPEED, normalizeModelSpeed } from '../composer/composer-options.js';
 import { useComposerSelections } from '../composer/useComposerSelections.js';
@@ -22,6 +23,7 @@ import { useViewportSizing } from './useViewportSizing.js';
 import { applyPwaTheme } from './pwa-theme.js';
 import { nextSyncedComposerSettings } from './model-sync.js';
 import { rememberSelectedSession } from './selection-persistence.js';
+import { markUserInputMessageResolved } from '../notification-events.js';
 import {
   buildComposerRunStatus,
   emptyContextStatus,
@@ -76,6 +78,7 @@ export default function App() {
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE);
+  const [composerMode, setComposerMode] = useState('chat');
   const [selectedModel, setSelectedModel] = useState(DEFAULT_STATUS.model);
   const [selectedModelSpeed, setSelectedModelSpeed] = useState(() => normalizeModelSpeed(localStorage.getItem(MODEL_SPEED_KEY)));
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState(() => {
@@ -469,6 +472,7 @@ export default function App() {
     selectedModel,
     selectedModelSpeed,
     selectedReasoningEffort,
+    composerMode,
     input,
     attachments,
     fileMentions,
@@ -491,6 +495,25 @@ export default function App() {
     scheduleTurnRefresh,
     loadQueueDrafts
   });
+
+  async function handleSubmitUserInput(message, answers) {
+    const body = {
+      projectId: selectedProjectRef.current?.id || selectedProject?.id || null,
+      sessionId: message.threadId || message.sessionId,
+      threadId: message.threadId || message.sessionId,
+      turnId: message.turnId,
+      itemId: message.itemId,
+      answers
+    };
+    if (message.conversationId) {
+      body.conversationId = message.conversationId;
+    }
+    await apiFetch('/api/chat/user-input/respond', {
+      method: 'POST',
+      body
+    });
+    setMessages((current) => markUserInputMessageResolved(current, message));
+  }
 
   async function handleGitAction(action) {
     if (!selectedProject || selectedRunning) {
@@ -622,7 +645,8 @@ export default function App() {
     onPreviewImage: setPreviewImage,
     onDeleteMessage: handleDeleteMessage,
     onImplementPlan: handleImplementPlan,
-    onAdjustPlan: handleAdjustPlan
+    onAdjustPlan: handleAdjustPlan,
+    onSubmitUserInput: handleSubmitUserInput
   };
   const composerProps = {
     composerRef,
@@ -630,6 +654,8 @@ export default function App() {
     setInput,
     selectedProject,
     selectedSession,
+    composerMode,
+    onSelectComposerMode: (value) => setComposerMode(normalizeComposerMode(value)),
     onSubmit: handleSubmit,
     running: selectedRunning,
     onAbort: handleAbort,
