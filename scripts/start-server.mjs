@@ -2,11 +2,22 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { applyMacSystemProxyEnv } from './system-proxy-env.mjs';
+import {
+  CODEXMOBILE_SERVICE_ARG,
+  CODEXMOBILE_SERVICE_NAME,
+  commandForPid,
+  commandMatchesCodexMobileServer,
+  listenerPidsForPort,
+  pidFilePath,
+  pidIsAlive,
+  serviceChildPath
+} from './codexmobile-service.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const logDir = path.join(root, '.codexmobile');
 const port = Number(process.env.PORT || 3321);
 const launchdLabel = 'com.codexmobile.bridge';
+const pidPath = pidFilePath(root);
 fs.mkdirSync(logDir, { recursive: true });
 
 const outPath = path.join(logDir, 'server.out.log');
@@ -38,23 +49,6 @@ function loadDotEnv() {
   }
 }
 
-function dedupePath(value) {
-  const seen = new Set();
-  return String(value || '')
-    .split(path.delimiter)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .filter((item) => {
-      const key = process.platform === 'win32' ? item.toLowerCase() : item;
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    })
-    .join(path.delimiter);
-}
-
 function childEnv() {
   if (process.platform !== 'win32') {
     return process.env;
@@ -71,10 +65,14 @@ function childEnv() {
     env[key] = value;
   }
 
-  env.Path = dedupePath([
+  env.Path = serviceChildPath([
     process.env.Path,
     process.env.PATH
   ].filter(Boolean).join(path.delimiter));
+  const bundledCodex = path.join(path.dirname(process.execPath), process.platform === 'win32' ? 'codex.exe' : 'codex');
+  if (!env.CODEXMOBILE_CODEX_BINARY && fs.existsSync(bundledCodex)) {
+    env.CODEXMOBILE_CODEX_BINARY = bundledCodex;
+  }
   return env;
 }
 
@@ -117,46 +115,14 @@ function restartLaunchAgentIfInstalled() {
   return true;
 }
 
-function listenerPidsForPort(value) {
-  if (process.platform === 'win32') {
-    return [];
-  }
-  const result = spawnSync('lsof', [`-tiTCP:${value}`, '-sTCP:LISTEN'], {
-    encoding: 'utf8'
-  });
-  if (result.status !== 0 && !result.stdout) {
-    return [];
-  }
-  return String(result.stdout || '')
-    .split(/\s+/)
-    .map((item) => Number(item))
-    .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
-}
-
-function commandForPid(pid) {
-  const result = spawnSync('ps', ['-p', String(pid), '-o', 'command='], {
-    encoding: 'utf8'
-  });
-  return result.status === 0 ? String(result.stdout || '').trim() : '';
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function pidIsAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function stopExistingServer() {
   const pids = listenerPidsForPort(port).filter((pid) => {
     const command = commandForPid(pid);
-    return command.includes('server/index.js') || command.includes('scripts/run-server.mjs');
+    return commandMatchesCodexMobileServer(command, { root, allowLegacy: true });
   });
   if (!pids.length) {
     return;
@@ -192,7 +158,7 @@ await stopExistingServer();
 const out = fs.openSync(outPath, 'a');
 const err = fs.openSync(errPath, 'a');
 try {
-  const child = spawn(process.execPath, ['server/index.js'], {
+  const child = spawn(process.execPath, ['server/index.js', CODEXMOBILE_SERVICE_ARG], {
     cwd: root,
     detached: true,
     stdio: ['ignore', out, err],
@@ -201,7 +167,15 @@ try {
   });
 
   child.unref();
+  fs.writeFileSync(pidPath, `${JSON.stringify({
+    pid: child.pid,
+    serviceName: CODEXMOBILE_SERVICE_NAME,
+    root,
+    port,
+    startedAt: new Date().toISOString()
+  }, null, 2)}\n`);
   console.log(`CodexMobile server started in background, pid=${child.pid}`);
+  console.log(`Service: ${CODEXMOBILE_SERVICE_NAME}`);
   console.log(`Logs: ${outPath}`);
 } finally {
   fs.closeSync(out);

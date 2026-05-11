@@ -134,6 +134,21 @@ npm start
 npm run start:bg
 ```
 
+关闭后台服务：
+
+```powershell
+npm run stop
+```
+
+Windows 上如果当前 PowerShell 找不到 `npm`，可以改用仓库里的包装脚本。这两个脚本不会修改 PowerShell profile、系统 `PATH`、注册表或 Tailscale 设置；它们只会在运行时定位 `node.exe`，然后调用项目自己的服务脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-codexmobile.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\stop-codexmobile.ps1
+```
+
+`start:bg` 和 `start-codexmobile.ps1` 会把进程标记为 `codexmobile`，并写入 `.codexmobile/server.pid`。停止脚本会校验服务名、当前项目路径、服务入口、端口和 PID 信息，因此不是简单地杀掉所有占用 `3321` 的进程。
+
 电脑本机打开：
 
 ```text
