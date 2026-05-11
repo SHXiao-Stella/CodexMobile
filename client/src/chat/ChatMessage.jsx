@@ -1,4 +1,4 @@
-import { Check, Copy, CornerDownRight, Trash2 } from 'lucide-react';
+import { Check, Copy, CornerDownRight, HelpCircle, Loader2, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { formatTime } from '../app/session-utils.js';
 import { copyTextToClipboard } from '../utils/clipboard.js';
@@ -7,7 +7,102 @@ import { MessageContent, splitMessageImages } from './MarkdownContent.jsx';
 import { PlanMessage } from './PlanMessage.jsx';
 import { UserImageStrip } from './ImagePreview.jsx';
 
-export function ChatMessage({ message, now, onPreviewImage, onDeleteMessage, onImplementPlan, onAdjustPlan }) {
+function UserInputRequestMessage({ message, onSubmitUserInput }) {
+  const [answers, setAnswers] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const answered = message.status === 'answered';
+  const questions = Array.isArray(message.questions) ? message.questions : [];
+
+  function questionKey(question, index) {
+    return question?.id || `question-${index}`;
+  }
+
+  function setQuestionAnswer(questionId, value) {
+    setAnswers((current) => ({
+      ...current,
+      [questionId]: { answers: value ? [value] : [] }
+    }));
+  }
+
+  async function submit(nextAnswers) {
+    setBusy(true);
+    setError('');
+    try {
+      await onSubmitUserInput?.(message, nextAnswers);
+    } catch (submitError) {
+      setError(submitError.message || '提交失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="message-row is-activity">
+      <div className={`message-bubble user-input-card ${answered ? 'is-answered' : ''}`}>
+        <div className="user-input-card-head">
+          {answered ? <Check size={16} /> : <HelpCircle size={16} />}
+          <span>{answered ? '已提交选择' : '等待你的选择'}</span>
+        </div>
+        {questions.map((question, index) => {
+          const id = questionKey(question, index);
+          const selectedAnswer = answers[id]?.answers?.[0] || '';
+          const hasOptions = Array.isArray(question.options) && question.options.length > 0;
+          const disabled = busy || answered;
+          return (
+            <div key={id} className="user-input-question">
+              {question.header ? <strong>{question.header}</strong> : null}
+              {question.question ? <p>{question.question}</p> : null}
+              {hasOptions ? (
+                <div className="user-input-options">
+                  {question.options.map((option, optionIndex) => {
+                    const optionLabel = String(option?.label || '');
+                    const optionKey = optionLabel || `option-${optionIndex}`;
+                    return (
+                      <button
+                        key={optionKey}
+                        type="button"
+                        className={selectedAnswer === optionLabel ? 'is-selected' : ''}
+                        disabled={disabled}
+                        onClick={() => setQuestionAnswer(id, optionLabel)}
+                      >
+                        <span>{optionLabel}</span>
+                        {option.description ? <small>{option.description}</small> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {question.isOther || !hasOptions ? (
+                <input
+                  type={question.isSecret ? 'password' : 'text'}
+                  value={selectedAnswer}
+                  disabled={disabled}
+                  onChange={(event) => setQuestionAnswer(id, event.target.value)}
+                />
+              ) : null}
+            </div>
+          );
+        })}
+        {error || message.error ? <div className="user-input-error">{error || message.error}</div> : null}
+        {!answered ? (
+          <div className="user-input-actions">
+            <button type="button" disabled={busy} onClick={() => submit(answers)}>
+              {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />}
+              <span>提交</span>
+            </button>
+            <button type="button" disabled={busy} onClick={() => submit({})}>
+              <X size={15} />
+              <span>取消</span>
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function ChatMessage({ message, now, onPreviewImage, onDeleteMessage, onImplementPlan, onAdjustPlan, onSubmitUserInput }) {
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef(null);
 
@@ -19,6 +114,9 @@ export function ChatMessage({ message, now, onPreviewImage, onDeleteMessage, onI
 
   if (message.role === 'activity') {
     return <ActivityMessage message={message} now={now} onImplementPlan={onImplementPlan} />;
+  }
+  if (message.role === 'user_input_request') {
+    return <UserInputRequestMessage message={message} onSubmitUserInput={onSubmitUserInput} />;
   }
   if (message.role === 'plan' || message.role === 'plan_request') {
     return (

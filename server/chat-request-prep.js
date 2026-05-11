@@ -11,6 +11,7 @@ import {
   withAttachmentReferences,
   withImageAttachmentPreviews
 } from './upload-service.js';
+import { normalizeCollaborationMode } from '../shared/collaboration-mode.js';
 import { normalizeServiceTier } from '../shared/service-tier.js';
 
 function dateStamp(date = new Date()) {
@@ -81,22 +82,6 @@ export function normalizeSelectedSkills(value, availableSkills = []) {
     });
   }
   return selected.slice(0, 8);
-}
-
-export function normalizeCollaborationMode(value, { model = '', reasoningEffort = null } = {}) {
-  const requestedMode = typeof value === 'string' ? value : value?.mode;
-  if (String(requestedMode || '').trim().toLowerCase() !== 'plan') {
-    return null;
-  }
-  const settings = typeof value === 'object' && value?.settings ? value.settings : {};
-  return {
-    mode: 'plan',
-    settings: {
-      model: String(settings.model ?? model ?? '').trim(),
-      reasoning_effort: settings.reasoning_effort ?? settings.reasoningEffort ?? reasoningEffort ?? null,
-      developer_instructions: settings.developer_instructions ?? null
-    }
-  };
 }
 
 function badRequest(message) {

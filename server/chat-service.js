@@ -17,6 +17,7 @@ import {
 import { createChatImageHandler } from './chat-image-handler.js';
 import { createChatAutoNamer } from './chat-auto-title.js';
 import { createDesktopTurnMonitor } from './desktop-turn-monitor.js';
+import { PendingUserInputRequests } from './user-input-requests.js';
 
 export { normalizeSelectedSkills } from './chat-request-prep.js';
 
@@ -56,6 +57,7 @@ export function createChatService({
   const rememberTurn = chatQueue.rememberTurn;
   const rememberTurnEvent = chatQueue.rememberTurnEvent;
   const resolveConversationKey = chatQueue.resolveConversationKey;
+  const pendingUserInputs = new PendingUserInputRequests();
   const chatImage = createChatImageHandler({
     imagePromptState,
     runImageTurn,
@@ -191,8 +193,66 @@ export function createChatService({
       rememberLiveSession,
       emitJobEvent,
       scheduleAutoNameCompletedSession,
+      onUserInputRequest: handleUserInputRequest,
+      onUserInputCleanup: clearUserInputRequestsForTurn,
       onQueueDrained: () => setTimeout(() => runNextQueuedChat(queueKey), 0)
     });
+  }
+
+  function handleUserInputRequest(message, resolve) {
+    const { key, request } = pendingUserInputs.add(message, resolve);
+    const timestamp = new Date().toISOString();
+    broadcast({
+      type: 'user-input-request',
+      ...request,
+      key,
+      sessionId: request.threadId,
+      timestamp
+    });
+    broadcast({
+      type: 'status-update',
+      sessionId: request.threadId,
+      turnId: request.turnId,
+      kind: 'turn',
+      status: 'running',
+      label: '等待手机输入',
+      detail: request.questions[0]?.question || '',
+      timestamp
+    });
+    return { key, request };
+  }
+
+  function clearUserInputRequestsForTurn({ threadId, turnId } = {}) {
+    const cleared = pendingUserInputs.clearForTurn({ threadId, turnId });
+    const timestamp = new Date().toISOString();
+    for (const request of cleared) {
+      broadcast({
+        type: 'user-input-resolved',
+        threadId: request.threadId,
+        sessionId: request.threadId,
+        turnId: request.turnId,
+        itemId: request.itemId,
+        timestamp
+      });
+    }
+    return cleared;
+  }
+
+  function respondToUserInput(body = {}) {
+    const result = pendingUserInputs.answer(body);
+    if (!result.ok) {
+      return result;
+    }
+    const timestamp = new Date().toISOString();
+    broadcast({
+      type: 'user-input-resolved',
+      threadId: result.request.threadId,
+      sessionId: result.request.threadId,
+      turnId: result.request.turnId,
+      itemId: result.request.itemId,
+      timestamp
+    });
+    return result;
   }
 
   async function sendChat(body, { remoteAddress = '' } = {}) {
@@ -591,6 +651,7 @@ export function createChatService({
     loadRecentImagePrompts: chatImage.loadRecentImagePrompts,
     listQueue: chatQueue.listQueue,
     removeQueuedDraft: chatQueue.removeQueuedDraft,
+    respondToUserInput,
     restoreQueuedDraft: chatQueue.restoreQueuedDraft,
     sendChat,
     sessionHasActiveWork,

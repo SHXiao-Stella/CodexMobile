@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  composerModeLabel,
   detectComposerToken,
   filteredSlashCommands,
+  normalizeComposerMode,
   replaceComposerToken
 } from './composer-shortcuts.js';
 
@@ -45,6 +47,16 @@ test('filteredSlashCommands matches Chinese commands and English aliases', () =>
 test('filteredSlashCommands exposes plan mode without turning it into model text', () => {
   const command = filteredSlashCommands('plan')[0];
   assert.equal(command.id, 'plan');
-  assert.equal(command.action, 'insert-prompt');
-  assert.equal(command.prompt, '/plan');
+  assert.equal(command.action, 'set-mode');
+  assert.equal(command.mode, 'plan');
+  assert.equal(command.prompt, undefined);
+  assert.equal(filteredSlashCommands('计划')[0].id, 'plan');
+});
+
+test('composer mode helpers normalize unknown values to chat', () => {
+  assert.equal(normalizeComposerMode('plan'), 'plan');
+  assert.equal(normalizeComposerMode('chat'), 'chat');
+  assert.equal(normalizeComposerMode('unknown'), 'chat');
+  assert.equal(composerModeLabel('plan'), 'Plan');
+  assert.equal(composerModeLabel('unknown'), 'Chat');
 });

@@ -1,7 +1,7 @@
 import { ArrowUp, Bot, Check, ChevronDown, FileText, Image, Loader2, MessageSquare, MessageSquarePlus, Paperclip, Plus, Search, Shield, Square, Terminal, Trash2, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch, getToken } from '../api.js';
-import { detectComposerToken, filteredSlashCommands, replaceComposerToken } from '../composer-shortcuts.js';
+import { COMPOSER_MODE_OPTIONS, composerModeLabel, detectComposerToken, filteredSlashCommands, replaceComposerToken } from '../composer-shortcuts.js';
 import { composerSendState, composerSubmitAction } from '../send-state.js';
 import { isDraftSession } from '../app/session-utils.js';
 import { attachmentPreviewUrl, isImageAttachment } from './attachment-preview.js';
@@ -17,6 +17,8 @@ export function Composer({
   setInput,
   selectedProject,
   selectedSession,
+  composerMode = 'chat',
+  onSelectComposerMode,
   onSubmit,
   running,
   onAbort,
@@ -164,10 +166,15 @@ export function Composer({
   }
 
   function runSlashCommand(command) {
-    replaceCurrentToken(command.prompt ? `${command.prompt} ` : '');
-    if (command.action === 'open-context') {
+    if (command.action === 'set-mode') {
+      onSelectComposerMode?.(command.mode);
+      replaceCurrentToken('');
+      setOpenMenu(null);
+    } else if (command.action === 'open-context') {
+      replaceCurrentToken(command.prompt ? `${command.prompt} ` : '');
       setOpenMenu('context');
     } else {
+      replaceCurrentToken(command.prompt ? `${command.prompt} ` : '');
       setOpenMenu(null);
     }
   }
@@ -289,6 +296,24 @@ export function Composer({
             >
               {permissionMode === option.value ? <Check size={16} /> : <span className="menu-spacer" />}
               {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {openMenu === 'composer-mode' ? (
+        <div className="composer-menu mode-menu">
+          {COMPOSER_MODE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={composerMode === option.value ? 'is-selected' : ''}
+              onClick={() => {
+                onSelectComposerMode?.(option.value);
+                setOpenMenu(null);
+              }}
+            >
+              {composerMode === option.value ? <Check size={16} /> : <span className="menu-spacer" />}
+              <span>{option.label}</span>
             </button>
           ))}
         </div>
@@ -604,6 +629,16 @@ export function Composer({
               aria-label={`权限：${permissionLabel(permissionMode)}`}
             >
               <Shield size={17} strokeWidth={1.85} />
+            </button>
+            <button
+              type="button"
+              className={`composer-mode-chip ${composerMode === 'plan' ? 'is-plan' : ''}`}
+              onClick={() => toggleMenu('composer-mode')}
+              title={`Mode: ${composerModeLabel(composerMode)}`}
+              aria-label={`Mode: ${composerModeLabel(composerMode)}`}
+            >
+              <MessageSquare size={15} strokeWidth={1.9} />
+              <span>{composerModeLabel(composerMode)}</span>
             </button>
             <button
               type="button"

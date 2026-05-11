@@ -926,6 +926,60 @@ test('sendChat passes plan collaboration mode to headless local Codex turns', as
   });
 });
 
+test('sendChat exposes app-server user input requests and resolves them through API handler', async () => {
+  let requestResolve = null;
+  const { service, broadcasts } = makeChatService({
+    getDesktopBridgeStatus: async () => ({
+      strict: false,
+      connected: true,
+      mode: 'headless-local',
+      reason: 'headless',
+      capabilities: { read: true, createThread: true, sendToOpenDesktopThread: false }
+    }),
+    runCodexTurn: async (payload, emit) => {
+      const pending = payload.onUserInputRequest({
+        method: 'item/tool/requestUserInput',
+        params: {
+          threadId: 'headless-plan-thread-1',
+          turnId: payload.turnId,
+          itemId: 'question-1',
+          questions: [{ id: 'choice', question: 'Continue?', options: [{ label: 'Yes' }] }]
+        }
+      }, (answer) => {
+        requestResolve = answer;
+      });
+      assert.equal(pending.request.itemId, 'question-1');
+      emit({ type: 'thread-started', sessionId: 'headless-plan-thread-1', previousSessionId: payload.draftSessionId, turnId: payload.turnId });
+      return 'headless-plan-thread-1';
+    }
+  });
+
+  await service.sendChat({
+    projectId: 'project-1',
+    draftSessionId: 'draft-project-1-1',
+    clientTurnId: 'client-turn-user-input',
+    message: 'plan with a question',
+    collaborationMode: 'plan'
+  });
+  await flushQueuedWork();
+
+  const requestBroadcast = broadcasts.find((payload) => payload.type === 'user-input-request');
+  assert.equal(requestBroadcast.sessionId, 'headless-plan-thread-1');
+  assert.equal(requestBroadcast.itemId, 'question-1');
+  assert.equal(requestBroadcast.questions[0].id, 'choice');
+
+  const result = service.respondToUserInput({
+    threadId: 'headless-plan-thread-1',
+    turnId: 'client-turn-user-input',
+    itemId: 'question-1',
+    answers: { choice: { answers: ['Yes'] } }
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(requestResolve, { answers: { choice: { answers: ['Yes'] } } });
+  assert.equal(broadcasts.some((payload) => payload.type === 'user-input-resolved' && payload.itemId === 'question-1'), true);
+});
+
 test('queue drafts can be listed, deleted, and restored without auto starting during active work', async () => {
   const { service } = makeChatService({
     getActiveRuns: () => [{ sessionId: 'thread-1', status: 'running' }],

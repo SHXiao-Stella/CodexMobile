@@ -2,11 +2,11 @@ export const SLASH_COMMANDS = [
   {
     id: 'plan',
     token: '/plan',
-    aliases: ['/计划模式'],
+    aliases: ['/计划', '/计划模式'],
     title: '计划模式',
     description: '先让 Codex 只规划，不直接改代码',
-    action: 'insert-prompt',
-    prompt: '/plan'
+    action: 'set-mode',
+    mode: 'plan'
   },
   {
     id: 'status',
@@ -44,6 +44,20 @@ export const SLASH_COMMANDS = [
     prompt: '如果任务适合拆分，请使用子代理并行处理互不冲突的部分，然后汇总结果。'
   }
 ];
+
+export const COMPOSER_MODE_OPTIONS = [
+  { value: 'chat', label: 'Chat' },
+  { value: 'plan', label: 'Plan' }
+];
+
+export function normalizeComposerMode(mode) {
+  return String(mode || '').trim().toLowerCase() === 'plan' ? 'plan' : 'chat';
+}
+
+export function composerModeLabel(mode) {
+  const normalized = normalizeComposerMode(mode);
+  return COMPOSER_MODE_OPTIONS.find((option) => option.value === normalized)?.label || 'Chat';
+}
 
 export function detectComposerToken(text, cursor = null) {
   const value = String(text || '');
@@ -83,6 +97,9 @@ export function filteredSlashCommands(query, commands = SLASH_COMMANDS) {
     const tokens = [command.token, command.title, command.description, ...(command.aliases || [])]
       .filter(Boolean)
       .map((item) => String(item).toLowerCase());
+    if (command.id === 'plan') {
+      tokens.push('计划', '计划模式');
+    }
     return tokens.some((item) => item.includes(normalized));
   });
 }

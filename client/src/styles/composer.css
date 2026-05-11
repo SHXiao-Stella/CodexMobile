@@ -555,6 +555,37 @@
   background: rgba(251, 146, 60, 0.12);
 }
 
+.composer-mode-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  color: #4b5563;
+  background: rgba(17, 24, 39, 0.05);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.composer-mode-chip.is-plan {
+  color: #0f766e;
+  background: rgba(13, 148, 136, 0.1);
+}
+
+[data-theme="dark"] .composer-mode-chip {
+  color: #d1d5db;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+[data-theme="dark"] .composer-mode-chip.is-plan {
+  color: #5eead4;
+  background: rgba(45, 212, 191, 0.13);
+}
+
 .composer-tool-skills[data-count]::after {
   content: attr(data-count);
   position: absolute;

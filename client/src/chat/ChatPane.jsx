@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { isNearChatBottom, shouldFollowChatOutput } from '../chat-scroll.js';
 import { ChatMessage } from './ChatMessage.jsx';
 
-export function ChatPane({ messages, selectedSession, loading = false, loadError = '', running, now, onPreviewImage, onDeleteMessage, onImplementPlan, onAdjustPlan }) {
+export function ChatPane({ messages, selectedSession, loading = false, loadError = '', running, now, onPreviewImage, onDeleteMessage, onImplementPlan, onAdjustPlan, onSubmitUserInput }) {
   const paneRef = useRef(null);
   const contentRef = useRef(null);
   const bottomPinnedRef = useRef(true);
@@ -129,6 +129,7 @@ export function ChatPane({ messages, selectedSession, loading = false, loadError
             onDeleteMessage={onDeleteMessage}
             onImplementPlan={onImplementPlan}
             onAdjustPlan={onAdjustPlan}
+            onSubmitUserInput={onSubmitUserInput}
           />
         ))}
       </div>

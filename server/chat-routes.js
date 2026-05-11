@@ -1,8 +1,11 @@
 import { readBody, sendJson } from './http-utils.js';
+import { submitDesktopFollowerUserInput as defaultSubmitDesktopFollowerUserInput } from './desktop-ipc-client.js';
+import { normalizeDesktopUserInputSubmission } from './user-input-requests.js';
 
 export function createChatRouteHandler({
   chatService,
-  remoteAddress = () => ''
+  remoteAddress = () => '',
+  submitDesktopFollowerUserInput = defaultSubmitDesktopFollowerUserInput
 }) {
   if (!chatService) {
     throw new Error('createChatRouteHandler requires chatService');
@@ -63,6 +66,28 @@ export function createChatRouteHandler({
         sendJson(res, 202, result);
       } catch (error) {
         sendJson(res, error.statusCode || 500, { error: error.message || 'Failed to send chat' });
+      }
+      return true;
+    }
+
+    if (method === 'POST' && pathname === '/api/chat/user-input/respond') {
+      const body = await readBody(req);
+      try {
+        const result = chatService.respondToUserInput(body);
+        if (result.ok) {
+          sendJson(res, 200, { accepted: true });
+          return true;
+        }
+        const desktopSubmission = normalizeDesktopUserInputSubmission(body);
+        if (desktopSubmission) {
+          const { conversationId, ...request } = desktopSubmission;
+          await submitDesktopFollowerUserInput(conversationId, request);
+          sendJson(res, 200, { accepted: true, delivery: 'desktop-ipc' });
+          return true;
+        }
+        sendJson(res, 404, { error: 'User input request not found' });
+      } catch (error) {
+        sendJson(res, error.statusCode || 500, { error: error.message || 'Failed to submit user input' });
       }
       return true;
     }

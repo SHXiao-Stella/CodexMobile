@@ -2,6 +2,7 @@ import {
   completeActivityMessagesForTurn,
   upsertStatusMessage
 } from '../chat/activity-model.js';
+import { collaborationModeForComposer } from '../../../shared/collaboration-mode.js';
 
 export function realSessionIdFromTurn(turn) {
   const sessionIdText = String(turn?.sessionId || '');
@@ -77,12 +78,16 @@ export function implementationPromptForPlan(planContent) {
 
 export function prepareComposerSubmission(message, attachments = [], fileMentions = []) {
   const raw = String(message || '').trim();
-  const planMatch = raw.match(/^\/(?:plan|计划模式)(?:\s+|$)/iu);
+  const planMatch = raw.match(/^\/(?:plan|计划|计划模式)(?:\s+|$)/iu);
   const messageText = planMatch ? raw.slice(planMatch[0].length).trim() : raw;
   return {
     message: displayMessageForTurn(messageText, attachments, fileMentions),
     collaborationMode: planMatch ? 'plan' : null
   };
+}
+
+export function buildComposerCollaborationMode(options = {}) {
+  return collaborationModeForComposer(options);
 }
 
 export function selectedSkillsForPaths(skills, selectedSkillPaths) {

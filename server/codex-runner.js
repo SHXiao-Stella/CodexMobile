@@ -6,6 +6,7 @@ import { createCodexAppServerClient, defaultServerRequestResult } from './codex-
 import { buildCodexTurnInput, imageMarkdownFromCodexImageGeneration } from './codex-native-images.js';
 import { buildCodexLarkCliContext } from './lark-cli.js';
 import { detectFeishuSkillKeys } from './feishu-skills.js';
+import { userInputRequestKey } from './user-input-requests.js';
 
 const activeRuns = new Map();
 const NON_ASCII_PATH_PATTERN = /[^\u0000-\u007F]/;
@@ -768,7 +769,7 @@ function abortError() {
   return error;
 }
 
-export async function runCodexTurn({ sessionId, draftSessionId, projectPath, message, attachments = [], selectedSkills = [], model, reasoningEffort, serviceTier, permissionMode, collaborationMode = null, turnId: providedTurnId }, emit) {
+export async function runCodexTurn({ sessionId, draftSessionId, projectPath, message, attachments = [], selectedSkills = [], model, reasoningEffort, serviceTier, permissionMode, collaborationMode = null, onUserInputRequest = null, onUserInputCleanup = null, turnId: providedTurnId }, emit) {
   const workingDirectory = await ensureAsciiWorkingDirectory(projectPath);
   const { sandboxMode, approvalPolicy } = mapPermissionMode(permissionMode);
   const feishuSkillKeys = detectFeishuSkillKeys(message);
@@ -837,6 +838,24 @@ export async function runCodexTurn({ sessionId, draftSessionId, projectPath, mes
   let turnTimeoutTimer = null;
   let turnInactivityTimeoutTimer = null;
   let resetTurnInactivityTimeout = () => {};
+  const pendingUserInputServerRequests = new Map();
+
+  async function cancelPendingUserInputServerRequests() {
+    if (!pendingUserInputServerRequests.size) {
+      return;
+    }
+    const fallback = defaultServerRequestResult({ method: 'item/tool/requestUserInput' });
+    for (const [key, pending] of pendingUserInputServerRequests.entries()) {
+      pendingUserInputServerRequests.delete(key);
+      try {
+        onUserInputCleanup?.(pending.request);
+      } catch (error) {
+        console.warn('[codex] Failed to clear pending user input request:', error.message);
+      }
+      pending.resolve(fallback);
+    }
+    await Promise.resolve();
+  }
 
   try {
     if (larkCliContext.enabled && larkCliContext.env) {
@@ -851,6 +870,37 @@ export async function runCodexTurn({ sessionId, draftSessionId, projectPath, mes
       allowHeadlessLocal: true,
       onServerRequest: async (appMessage) => {
         resetTurnInactivityTimeout();
+        if (appMessage?.method === 'item/tool/requestUserInput' && onUserInputRequest) {
+          if (turnInactivityTimeoutTimer) {
+            clearTimeout(turnInactivityTimeoutTimer);
+            turnInactivityTimeoutTimer = null;
+          }
+          return new Promise((resolve) => {
+            let key = null;
+            const resolveOnce = (result) => {
+              if (key) {
+                pendingUserInputServerRequests.delete(key);
+              }
+              resetTurnInactivityTimeout();
+              resolve(result);
+            };
+            let pending = null;
+            try {
+              pending = onUserInputRequest(appMessage, resolveOnce);
+            } catch (error) {
+              console.warn('[codex] Failed to register user input request:', error.message);
+              resolveOnce(defaultServerRequestResult(appMessage));
+              return;
+            }
+            key = userInputRequestKey(pending?.request);
+            if (key) {
+              pendingUserInputServerRequests.set(key, {
+                request: pending.request,
+                resolve: resolveOnce
+              });
+            }
+          });
+        }
         if (appMessage?.method === 'item/plan/requestImplementation') {
           emitPlanImplementationRequest(appMessage, currentSessionId || sessionId || draftSessionId, turnId, emit);
         }
@@ -1056,6 +1106,7 @@ export async function runCodexTurn({ sessionId, draftSessionId, projectPath, mes
       });
     }
   } finally {
+    await cancelPendingUserInputServerRequests();
     if (turnTimeoutTimer) {
       clearTimeout(turnTimeoutTimer);
     }

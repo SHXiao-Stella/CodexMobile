@@ -302,6 +302,8 @@ export function runQueuedHeadlessChatJob({
   rememberLiveSession,
   emitJobEvent,
   scheduleAutoNameCompletedSession,
+  onUserInputRequest,
+  onUserInputCleanup,
   onQueueDrained
 }) {
   const metadataUpdates = [];
@@ -356,6 +358,8 @@ export function runQueuedHeadlessChatJob({
       serviceTier: job.serviceTier,
       permissionMode: job.permissionMode,
       collaborationMode: job.collaborationMode,
+      onUserInputRequest,
+      onUserInputCleanup,
       turnId: job.turnId
     },
     (payload) => {

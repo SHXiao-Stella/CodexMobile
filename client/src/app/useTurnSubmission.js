@@ -18,6 +18,7 @@ import {
 } from './session-utils.js';
 import {
   displayMessageForTurn,
+  buildComposerCollaborationMode,
   completeLocalAbortMessages,
   implementationPromptForPlan,
   localHandoffStatusPayload,
@@ -46,6 +47,7 @@ export function useTurnSubmission({
   selectedModel,
   selectedModelSpeed,
   selectedReasoningEffort,
+  composerMode,
   input,
   attachments,
   fileMentions,
@@ -445,14 +447,23 @@ export function useTurnSubmission({
     if ((!prepared.message && !attachments.length && !fileMentions.length) || !project) {
       return;
     }
+    const sendMode = mode === 'guide' ? 'interrupt' : mode;
+    const modelForTurn = selectedModel || status.model;
+    const reasoningForTurn = selectedReasoningEffort || status.reasoningEffort || defaultReasoningEffort;
+    const collaborationMode = buildComposerCollaborationMode({
+      composerMode: prepared.collaborationMode === 'plan' ? 'plan' : composerMode,
+      sendMode,
+      model: modelForTurn,
+      reasoningEffort: reasoningForTurn
+    });
     try {
       await submitCodexMessage({
         message: prepared.message,
         attachmentsForTurn: attachments,
         fileMentionsForTurn: fileMentions,
         clearComposer: true,
-        sendMode: mode === 'guide' ? 'interrupt' : mode,
-        collaborationMode: prepared.collaborationMode
+        sendMode,
+        collaborationMode
       });
       await loadQueueDrafts(selectedSessionRef.current);
     } catch {

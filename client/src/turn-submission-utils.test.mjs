@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   displayMessageForTurn,
+  buildComposerCollaborationMode,
   completeLocalAbortMessages,
   implementationPromptForPlan,
   prepareComposerSubmission,
@@ -76,6 +77,38 @@ test('prepareComposerSubmission strips leading plan command and marks collaborat
     message: '请查看引用文件。',
     collaborationMode: 'plan'
   });
+  assert.deepEqual(prepareComposerSubmission('/计划 写一个方案', [], []), {
+    message: '写一个方案',
+    collaborationMode: 'plan'
+  });
+});
+
+test('buildComposerCollaborationMode sends plan settings only for new plan turns', () => {
+  assert.deepEqual(buildComposerCollaborationMode({
+    composerMode: 'plan',
+    sendMode: 'start',
+    model: 'gpt-5.5',
+    reasoningEffort: 'high'
+  }), {
+    mode: 'plan',
+    settings: {
+      model: 'gpt-5.5',
+      reasoning_effort: 'high',
+      developer_instructions: null
+    }
+  });
+  assert.equal(buildComposerCollaborationMode({
+    composerMode: 'plan',
+    sendMode: 'steer',
+    model: 'gpt-5.5',
+    reasoningEffort: 'high'
+  }), null);
+  assert.equal(buildComposerCollaborationMode({
+    composerMode: 'chat',
+    sendMode: 'start',
+    model: 'gpt-5.5',
+    reasoningEffort: 'high'
+  }), null);
 });
 
 test('userMessageMetadataForSendMode marks steer messages as guided followups', () => {

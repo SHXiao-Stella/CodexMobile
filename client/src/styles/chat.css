@@ -107,6 +107,100 @@
   box-shadow: none;
 }
 
+.message-row.is-activity .user-input-card {
+  max-width: min(100%, 760px);
+  padding: 14px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 12px;
+  color: var(--text);
+  background: rgba(240, 253, 250, 0.9);
+}
+
+.user-input-card-head,
+.user-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-input-card-head {
+  margin-bottom: 10px;
+  color: #0f766e;
+  font-weight: 750;
+}
+
+.user-input-question + .user-input-question {
+  margin-top: 12px;
+}
+
+.user-input-question strong,
+.user-input-question p {
+  margin: 0 0 7px;
+}
+
+.user-input-options {
+  display: grid;
+  gap: 7px;
+}
+
+.user-input-options button,
+.user-input-actions button {
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.user-input-options button {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.user-input-options button.is-selected {
+  border-color: rgba(13, 148, 136, 0.45);
+  background: rgba(204, 251, 241, 0.82);
+}
+
+.user-input-options small {
+  color: var(--muted);
+}
+
+.user-input-question input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.user-input-actions {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.user-input-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.user-input-error {
+  margin-top: 9px;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.user-input-card.is-answered {
+  opacity: 0.72;
+}
+
 .message-row.is-plan,
 .message-row.is-plan-request {
   justify-content: center;
@@ -1030,6 +1124,29 @@
   color: #a1a1aa;
   background: transparent;
   border-color: transparent;
+}
+
+[data-theme="dark"] .message-row.is-activity .user-input-card {
+  color: #f4f4f5;
+  background: rgba(15, 47, 43, 0.72);
+  border-color: rgba(94, 234, 212, 0.18);
+}
+
+[data-theme="dark"] .user-input-card-head {
+  color: #5eead4;
+}
+
+[data-theme="dark"] .user-input-options button,
+[data-theme="dark"] .user-input-actions button,
+[data-theme="dark"] .user-input-question input {
+  color: #f4f4f5;
+  background: rgba(10, 10, 11, 0.55);
+  border-color: rgba(94, 234, 212, 0.16);
+}
+
+[data-theme="dark"] .user-input-options button.is-selected {
+  background: rgba(13, 148, 136, 0.28);
+  border-color: rgba(94, 234, 212, 0.36);
 }
 
 [data-theme="dark"] .plan-card,
