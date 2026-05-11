@@ -4,6 +4,8 @@ CodexMobile 是一个运行在自己电脑上的私有移动端 Codex 控制台�
 
 这个 fork 基于 [flyyangX/CodexMobile](https://github.com/flyyangX/CodexMobile)。当前分支主要面向 Windows + Codex Desktop + Tailscale 的使用方式，在原项目基础上补强了桌面端 IPC 同步、已有线程读取、Plan mode、用户输入卡片、Android HTTPS 推送和 Windows 弹窗问题。
 
+Plan mode 和用户输入卡片部分也参考了 [bingqldx/CodexMobile](https://github.com/bingqldx/CodexMobile) 的实现思路，尤其是显式 Plan 入口和 app-server user-input request 的移动端卡片交互。本 fork 没有直接合并它的大型 `App.jsx` / `server/index.js` 重构，而是把相关能力迁入当前更模块化的结构。
+
 ## 这个 Fork 新增了什么
 
 - **Windows Codex Desktop IPC 接入**：在 Desktop IPC 可用时，手机端可以向已有 Codex Desktop 线程发送和 steer 消息。
@@ -76,7 +78,7 @@ CodexMobile 是一个运行在自己电脑上的私有移动端 Codex 控制台�
 ## 重要限制
 
 - 这不是公网 SaaS，也不是远程桌面。它是一个暴露在可信私有网络里的本机 Node.js bridge。
-- 当前不承诺接管原生 Codex Desktop GUI 的任意权限弹窗。Codex Desktop 自己弹出的权限审批，不一定能被手机端稳定接管。
+- 当前不能审批原生 Codex Desktop GUI 自己弹出的权限请求。也就是说，如果你直接在电脑上的 Codex Desktop 窗口里发起任务，运行到一半出现桌面端权限审批，手机端不承诺能看到或处理这个审批。
 - 手机端用户输入卡片主要覆盖 CodexMobile 自己发起或 app-server 明确广播出来的 request。
 - Desktop IPC 能力取决于当前 Codex Desktop 版本和线程是否有可用 owner。
 - Web Push 必须走 HTTPS。`http://<tailscale-ip>:3321` 可以正常打开网页，但不能保证后台通知。
