@@ -38,14 +38,22 @@ function gitError(error, fallback = 'Git 操作失败') {
   return wrapped;
 }
 
+export function gitChildProcessOptions(cwd, { timeoutMs = null, maxBuffer = null } = {}) {
+  return {
+    cwd,
+    env: process.env,
+    windowsHide: true,
+    ...(timeoutMs ? { timeout: timeoutMs } : {}),
+    ...(maxBuffer ? { maxBuffer } : {})
+  };
+}
+
 async function runGit(cwd, args, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   try {
-    const result = await execFileAsync('git', args, {
-      cwd,
-      timeout: timeoutMs,
-      maxBuffer: MAX_GIT_OUTPUT,
-      env: process.env
-    });
+    const result = await execFileAsync('git', args, gitChildProcessOptions(cwd, {
+      timeoutMs,
+      maxBuffer: MAX_GIT_OUTPUT
+    }));
     return {
       stdout: String(result.stdout || ''),
       stderr: String(result.stderr || '')
@@ -58,7 +66,7 @@ async function runGit(cwd, args, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
 async function runGitCapped(cwd, args, { timeoutMs = DEFAULT_TIMEOUT_MS, maxChars = MAX_DIFF_CHARS } = {}) {
   return new Promise((resolve, reject) => {
     const limit = Math.max(1000, Number(maxChars) || MAX_DIFF_CHARS);
-    const child = spawn('git', args, { cwd, env: process.env });
+    const child = spawn('git', args, gitChildProcessOptions(cwd));
     let stdout = '';
     let stderr = '';
     let stdoutBytes = 0;

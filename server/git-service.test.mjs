@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
 import {
   createGitService,
   defaultCommitMessage,
+  gitChildProcessOptions,
   normalizeBranchName,
   parseGitStatusShort,
   truncateGitOutput
@@ -67,6 +69,14 @@ test('truncateGitOutput caps large diff payloads', () => {
   assert.equal(result.truncated, true);
   assert.equal(result.originalLength, 1200);
   assert.match(result.text, /diff truncated/);
+});
+
+test('git child processes are hidden on Windows', () => {
+  const options = gitChildProcessOptions('/repo', { timeoutMs: 1000 });
+
+  assert.equal(options.windowsHide, true);
+  assert.equal(options.cwd, '/repo');
+  assert.equal(options.timeout, 1000);
 });
 
 test('git service returns truncated diff with status', async () => {
@@ -213,12 +223,13 @@ test('git service creates a linked worktree from a codex branch name', async () 
     branchName: 'mobile panel',
     baseBranch: 'main'
   });
+  const expectedWorktreePath = path.join(path.dirname('/repo'), 'repo-mobile-panel');
   assert.equal(
-    calls.includes('worktree add -b codex/mobile-panel /repo-mobile-panel main'),
+    calls.includes(`worktree add -b codex/mobile-panel ${expectedWorktreePath} main`),
     true
   );
   assert.equal(result.branch, 'codex/mobile-panel');
-  assert.equal(result.worktreePath, '/repo-mobile-panel');
+  assert.equal(result.worktreePath, expectedWorktreePath);
 });
 
 test('git service generates a copyable PR draft', async () => {

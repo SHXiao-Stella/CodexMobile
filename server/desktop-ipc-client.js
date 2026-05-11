@@ -249,10 +249,13 @@ export async function probeDesktopIpc({ timeoutMs = 3000 } = {}) {
 }
 
 async function requestDesktopFollower(method, params, options = {}) {
-  const client = new DesktopIpcClient();
+  const client = new DesktopIpcClient({
+    ...(options.socketPath ? { socketPath: options.socketPath } : {})
+  });
   try {
     await client.connect({ timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS });
-    const response = await client.request(method, params, options);
+    const { socketPath, ...requestOptions } = options;
+    const response = await client.request(method, params, requestOptions);
     if (response.resultType === 'error') {
       const error = ipcError(response.error || `桌面端 Codex 拒绝请求: ${method}`);
       error.statusCode = response.error === 'no-client-found' ? 409 : 502;
@@ -298,6 +301,13 @@ export async function setDesktopFollowerModelAndReasoning(conversationId, model,
     conversationId,
     model,
     reasoningEffort
+  }, options);
+}
+
+export async function submitDesktopFollowerUserInput(conversationId, request, options = {}) {
+  return requestDesktopFollower('thread-follower-submit-user-input', {
+    conversationId,
+    ...request
   }, options);
 }
 

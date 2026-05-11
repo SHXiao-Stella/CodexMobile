@@ -10,6 +10,10 @@ import {
   renameMobileSession
 } from './mobile-session-index.js';
 import {
+  mergeDesktopThreadLists,
+  readLocalSessionThreads
+} from './local-session-index.js';
+import {
   createSessionMessageReader,
   readRolloutContextState
 } from './session-message-reader.js';
@@ -107,13 +111,22 @@ export async function refreshCodexCache() {
   const mobileSessionIndex = await readMobileSessionIndex();
   const hiddenSessionIds = await readHiddenSessionIds();
   const spawnEdges = INCLUDE_MISSING_SUBAGENT_THREADS ? await readThreadSpawnEdges() : [];
-  const desktopThreads = await listDesktopThreads({ limit: 1000 });
+  const [desktopThreads, localSessionThreads] = await Promise.all([
+    listDesktopThreads({ limit: 1000 }).catch((error) => {
+      console.warn('[sessions] Failed to list desktop threads:', error.message);
+      return [];
+    }),
+    readLocalSessionThreads({ limit: 1000 }).catch((error) => {
+      console.warn('[sessions] Failed to read local session index:', error.message);
+      return [];
+    })
+  ]);
   const sessionIndex = await buildSessionIndex({
     config,
     workspaceState,
     mobileSessionIndex,
     hiddenSessionIds,
-    desktopThreads,
+    desktopThreads: mergeDesktopThreadLists(desktopThreads, localSessionThreads),
     spawnEdges,
     includeMissingSubagentThreads: INCLUDE_MISSING_SUBAGENT_THREADS,
     readDesktopThread,

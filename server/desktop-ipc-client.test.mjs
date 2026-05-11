@@ -23,6 +23,7 @@ test('desktop follower IPC methods use the current desktop protocol version', ()
   assert.equal(desktopIpcMethodVersion('thread-follower-start-turn'), 1);
   assert.equal(desktopIpcMethodVersion('thread-follower-steer-turn'), 1);
   assert.equal(desktopIpcMethodVersion('thread-follower-interrupt-turn'), 1);
+  assert.equal(desktopIpcMethodVersion('thread-follower-submit-user-input'), 1);
 });
 
 function frameFor(payload) {
@@ -172,6 +173,60 @@ test('requestDesktopThreadSnapshotRefresh asks desktop owners to rebroadcast sna
     clientId: 'client-1',
     status: 'connected',
     conversationId: 'thread-1'
+  });
+
+  socket.destroy();
+  await new Promise((resolve) => server.close(resolve));
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('submitDesktopFollowerUserInput sends the desktop IPC response frame', async () => {
+  assert.equal(typeof desktopIpc.submitDesktopFollowerUserInput, 'function');
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-ipc-test-'));
+  const socketPath = testSocketPath(dir);
+  const server = net.createServer();
+  await new Promise((resolve) => server.listen(socketPath, resolve));
+
+  const accepted = new Promise((resolve) => server.once('connection', resolve));
+  const submitted = desktopIpc.submitDesktopFollowerUserInput('thread-1', {
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    itemId: 'item-1',
+    response: { answers: { choice: { answers: ['Yes'] } } }
+  }, {
+    socketPath,
+    timeoutMs: 1000
+  });
+  const socket = await accepted;
+  const init = await readFrame(socket);
+  socket.write(frameFor({
+    type: 'response',
+    requestId: init.requestId,
+    resultType: 'success',
+    method: 'initialize',
+    result: { clientId: 'client-1' }
+  }));
+  const request = await readFrame(socket);
+  socket.write(frameFor({
+    type: 'response',
+    requestId: request.requestId,
+    resultType: 'success',
+    method: 'thread-follower-submit-user-input',
+    result: { accepted: true }
+  }));
+  const result = await submitted;
+
+  assert.deepEqual(result, { accepted: true });
+  assert.equal(request.type, 'request');
+  assert.equal(request.method, 'thread-follower-submit-user-input');
+  assert.equal(request.version, 1);
+  assert.deepEqual(request.params, {
+    conversationId: 'thread-1',
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    itemId: 'item-1',
+    response: { answers: { choice: { answers: ['Yes'] } } }
   });
 
   socket.destroy();

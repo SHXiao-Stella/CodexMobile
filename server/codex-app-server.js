@@ -32,6 +32,15 @@ function resolveCodexBinary() {
   return 'codex';
 }
 
+export function codexAppServerSpawnOptions({ cwd, env } = {}) {
+  return {
+    cwd,
+    env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true
+  };
+}
+
 function responseError(message, method = '') {
   const error = new Error(message || `Codex app-server request failed${method ? `: ${method}` : ''}`);
   error.method = method;
@@ -183,11 +192,10 @@ export class CodexAppServerClient {
     const args = this.transport.mode === 'desktop-proxy'
       ? ['app-server', 'proxy', '--sock', this.transport.sockPath]
       : ['app-server', '--listen', 'stdio://'];
-    this.child = spawn(resolveCodexBinary(), args, {
+    this.child = spawn(resolveCodexBinary(), args, codexAppServerSpawnOptions({
       cwd: this.cwd,
-      env: this.env,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+      env: this.env
+    }));
 
     this.readline = readline.createInterface({
       input: this.child.stdout,
@@ -348,6 +356,26 @@ export async function createCodexAppServerClient(options = {}) {
   return client;
 }
 
+export function desktopBridgeStatusForAppServerTransport(transport = {}, { checkedAt = new Date().toISOString(), ipcReason = '' } = {}) {
+  const mode = transport.mode || 'unavailable';
+  const connected = Boolean(transport.connected && mode !== 'unavailable');
+  return {
+    strict: transport.strict !== false,
+    connected,
+    mode,
+    reason: connected ? (mode === 'desktop-proxy' ? null : transport.reason || null) : transport.reason || ipcReason || null,
+    socketPath: transport.sockPath || null,
+    checkedAt,
+    capabilities: {
+      read: mode === 'desktop-proxy',
+      sendToOpenDesktopThread: mode === 'desktop-proxy',
+      createThread: connected && mode !== 'isolated-dev',
+      headless: mode === 'headless-local',
+      backgroundCodex: mode === 'headless-local'
+    }
+  };
+}
+
 export async function getDesktopBridgeStatus({ force = false } = {}) {
   const now = Date.now();
   if (!force && bridgeStatusCache && now - bridgeStatusCache.checkedAt < BRIDGE_STATUS_CACHE_MS) {
@@ -398,6 +426,13 @@ export async function getDesktopBridgeStatus({ force = false } = {}) {
     return base;
   }
 
+  const passiveStatus = desktopBridgeStatusForAppServerTransport(transport, {
+    checkedAt: new Date(now).toISOString(),
+    ipcReason: ipc.reason
+  });
+  bridgeStatusCache = { checkedAt: now, status: passiveStatus };
+  return passiveStatus;
+
   const client = new CodexAppServerClient({
     clientInfo: { name: 'CodexMobileBridgeProbe', title: null, version: '0.1.0' },
     transport
@@ -432,10 +467,13 @@ export async function getDesktopBridgeStatus({ force = false } = {}) {
   }
 }
 
-export async function listDesktopThreads({ limit = 1000, pageSize = 100 } = {}) {
-  const client = await createCodexAppServerClient({
+export async function listDesktopThreads({ limit = 1000, pageSize = 100, transport = null, createClient = createCodexAppServerClient } = {}) {
+  if (transport && (!transport.connected || transport.mode === 'unavailable' || transport.mode === 'headless-local')) {
+    return [];
+  }
+  const client = await createClient({
     clientInfo: { name: 'CodexMobileList', title: null, version: '0.1.0' },
-    allowReadOnlyIsolated: true
+    ...(transport ? { transport } : { allowReadOnlyIsolated: true })
   });
   try {
     const threads = [];
@@ -462,10 +500,15 @@ export async function listDesktopThreads({ limit = 1000, pageSize = 100 } = {}) 
   }
 }
 
-export async function readDesktopThread(threadId, { includeTurns = true } = {}) {
-  const client = await createCodexAppServerClient({
+export async function readDesktopThread(threadId, { includeTurns = true, transport = null, createClient = createCodexAppServerClient } = {}) {
+  if (transport && (!transport.connected || transport.mode === 'unavailable' || transport.mode === 'headless-local')) {
+    const error = new Error('Desktop thread not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  const client = await createClient({
     clientInfo: { name: 'CodexMobileRead', title: null, version: '0.1.0' },
-    allowReadOnlyIsolated: true
+    ...(transport ? { transport } : { allowReadOnlyIsolated: true })
   });
   try {
     return await client.request('thread/read', {
