@@ -70,7 +70,7 @@ export function createDesktopTurnMonitor({
       clientTurnId: run.clientTurnId || null,
       startedAt: run.startedAt,
       status: run.status,
-      steerable: false
+      steerable: true
     };
   }
 

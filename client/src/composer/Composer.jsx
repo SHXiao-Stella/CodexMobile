@@ -2,7 +2,7 @@ import { ArrowUp, Bot, Check, ChevronDown, FileText, Image, Loader2, MessageSqua
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch, getToken } from '../api.js';
 import { detectComposerToken, filteredSlashCommands, replaceComposerToken } from '../composer-shortcuts.js';
-import { composerSendState } from '../send-state.js';
+import { composerSendState, composerSubmitAction } from '../send-state.js';
 import { isDraftSession } from '../app/session-utils.js';
 import { attachmentPreviewUrl, isImageAttachment } from './attachment-preview.js';
 import { filesFromClipboardData } from './paste-files.js';
@@ -191,16 +191,22 @@ export function Composer({
 
   function submit(event) {
     event.preventDefault();
-    if (stopMode) {
+    const action = composerSubmitAction({
+      stopMode,
+      runningInputMode,
+      hasInput,
+      sendState
+    });
+    if (action.type === 'abort') {
       onAbort();
       return;
     }
-    if (runningInputMode) {
+    if (action.type === 'menu') {
       setOpenMenu((current) => (current === 'send-mode' ? null : 'send-mode'));
       return;
     }
-    if (hasInput) {
-      onSubmit({ mode: 'start' });
+    if (action.type === 'submit') {
+      onSubmit({ mode: action.mode });
       setOpenMenu(null);
     }
   }

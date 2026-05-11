@@ -282,7 +282,7 @@ function markRuntimeRunning(state, { turnId, timestamp, startedAt = null } = {})
     turnId: id,
     startedAt: startedAtIso,
     updatedAt: timestamp || startedAtIso || new Date().toISOString(),
-    steerable: false
+    steerable: true
   };
 }
 

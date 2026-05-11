@@ -118,10 +118,12 @@ export function prepareChatRequest(body = {}, {
     throw badRequest('message or attachments are required');
   }
 
-  const requestedSessionId = String(body.sessionId || '').trim();
+  const bodySessionId = String(body.sessionId || '').trim();
+  const rawDraftSessionId = String(body.draftSessionId || '').trim();
+  const draftSessionId = rawDraftSessionId.startsWith('draft-') ? rawDraftSessionId : null;
+  const requestedSessionId = bodySessionId || (!draftSessionId ? rawDraftSessionId : '');
   const isDraftSession = requestedSessionId.startsWith('draft-');
   const session = requestedSessionId && !isDraftSession ? getSession(requestedSessionId) : null;
-  const draftSessionId = String(body.draftSessionId || '').trim() || null;
   const selectedSessionId = session && !session.mobileOnly
     ? session.id
     : (requestedSessionId && !isDraftSession ? requestedSessionId : null);

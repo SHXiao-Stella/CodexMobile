@@ -7,6 +7,8 @@ import path from 'node:path';
 const MAX_FRAME_BYTES = 256 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DESKTOP_IPC_METHOD_VERSIONS = new Map([
+  ['thread-stream-state-changed', 6],
+  ['thread-read-state-changed', 1],
   ['thread-archived', 2],
   ['thread-unarchived', 1],
   ['thread-follower-start-turn', 1],
@@ -340,6 +342,32 @@ export async function broadcastDesktopThreadTitleUpdated(
     return {
       sent: false,
       reason: error.message || '桌面端 Codex IPC 广播失败'
+    };
+  } finally {
+    client.close();
+  }
+}
+
+export async function requestDesktopThreadSnapshotRefresh(
+  conversationId,
+  { socketPath = null, timeoutMs = 1500 } = {}
+) {
+  const client = new DesktopIpcClient({
+    clientType: 'codexmobile-thread-refresh',
+    ...(socketPath ? { socketPath } : {})
+  });
+  try {
+    await client.connect({ timeoutMs });
+    client.sendBroadcast('client-status-changed', {
+      clientId: client.clientId,
+      status: 'connected',
+      conversationId
+    });
+    return { sent: true };
+  } catch (error) {
+    return {
+      sent: false,
+      reason: error.message || '妗岄潰绔?Codex IPC 骞挎挱澶辫触'
     };
   } finally {
     client.close();

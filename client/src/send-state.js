@@ -101,3 +101,24 @@ export function composerSendState({
     canInterrupt: false
   };
 }
+
+export function composerSubmitAction({
+  stopMode = false,
+  runningInputMode = false,
+  hasInput = false,
+  sendState = {}
+} = {}) {
+  if (stopMode) {
+    return { type: 'abort' };
+  }
+  if (runningInputMode) {
+    if (sendState.canSteer && sendState.mode === 'steer') {
+      return { type: 'submit', mode: 'steer' };
+    }
+    return { type: 'menu' };
+  }
+  if (hasInput) {
+    return { type: 'submit', mode: 'start' };
+  }
+  return { type: 'none' };
+}

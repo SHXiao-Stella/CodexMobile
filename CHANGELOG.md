@@ -4,6 +4,19 @@ All notable changes to CodexMobile are tracked here.
 
 ## Unreleased
 
+### Changed
+
+- Changed the composer default permission mode from `bypassPermissions` to `default`, while keeping full access available as an explicit opt-in.
+- Marked Codex Desktop IPC handoff turns as steerable so mobile sends can continue an active desktop-owned turn directly.
+
+### Fixed
+
+- Fixed Windows Codex Desktop IPC sends in default permission mode by sending a complete `workspaceWrite` sandbox policy, including `writableRoots`.
+- Fixed mobile-to-desktop sends that only appeared in Codex Desktop after restarting the desktop app by requesting a desktop-owned thread snapshot refresh after accepted IPC handoff.
+- Fixed stale draft-session handling so existing desktop thread ids are not treated as mobile drafts.
+- Fixed desktop-thread owner failures from incorrectly falling back to a background runner for already selected desktop sessions.
+- Fixed generic tool `TypeError` messages being mislabeled as browser-operation failures in the mobile activity timeline.
+
 ## [1.2.0] - 2026-05-09
 
 ### Added

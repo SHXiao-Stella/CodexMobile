@@ -211,7 +211,7 @@ function describeActivityStep(step) {
     };
   }
 
-  if (/browser_|浏览器|截图|点击|导航|navigate|screenshot|click|type/.test(source)) {
+  if (isBrowserActivitySource(source)) {
     return {
       type: 'browser',
       label: compactActivityText(label || browserActivityLabel(toolName || source)),
@@ -231,7 +231,7 @@ function describeActivityStep(step) {
     };
   }
 
-  if (/读取|查看|检查|探索|read|list|inspect|load_workspace_dependencies|view_image/.test(source)) {
+  if (isExploreActivitySource(step, source)) {
     return {
       type: 'explore',
       label: compactActivityText(label || '探索文件'),
@@ -258,6 +258,24 @@ function describeActivityStep(step) {
     count: 1,
     unit: 'step'
   };
+}
+
+function isBrowserActivitySource(source) {
+  const text = String(source || '').toLowerCase();
+  return (
+    /browser[_\s.-]/.test(text) ||
+    /(?:^|[^\w])(?:navigate|screenshot|click|type_text|typetext|press_key|presskey|select_option|selectoption|browser_snapshot)(?:[^\w]|$)/.test(text) ||
+    /\u6d4f\u89c8\u5668|\u622a\u56fe|\u70b9\u51fb|\u5bfc\u822a/.test(text)
+  );
+}
+
+function isExploreActivitySource(step, source) {
+  const actionSource = `${step?.kind || ''} ${step?.toolName || ''} ${step?.label || ''} ${step?.command || ''}`.toLowerCase();
+  return (
+    /读取|查看|检查|探索/.test(actionSource) ||
+    /\b(?:read|list|inspect|load_workspace_dependencies|view_image)\b/.test(actionSource) ||
+    /\b(?:load_workspace_dependencies|view_image)\b/.test(source)
+  );
 }
 
 function dominantActivityType(items) {

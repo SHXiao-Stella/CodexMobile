@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
 import { createChatService } from './chat-service.js';
 
@@ -165,6 +166,38 @@ test('sendChat sends existing desktop-ipc threads through the desktop follower b
   assert.equal(started.params.input[0].text, '从手机发到桌面已有线程');
 });
 
+test('sendChat omits desktop collaboration mode when not in plan mode', async () => {
+  let started = null;
+  let collaborationModeCalls = 0;
+  const { service } = makeChatService({
+    getDesktopBridgeStatus: async () => ({
+      strict: true,
+      connected: true,
+      mode: 'desktop-ipc',
+      reason: null,
+      capabilities: { sendToOpenDesktopThread: true, createThread: false }
+    }),
+    startDesktopFollowerTurn: async (conversationId, params) => {
+      started = { conversationId, params };
+      return { result: { turn: { id: 'desktop-turn-1' } } };
+    },
+    setDesktopFollowerCollaborationMode: async () => {
+      collaborationModeCalls += 1;
+      return { ok: true };
+    }
+  });
+
+  await service.sendChat({
+    projectId: 'project-1',
+    sessionId: 'thread-1',
+    message: 'hello'
+  });
+
+  assert.equal(started.conversationId, 'thread-1');
+  assert.equal('collaborationMode' in started.params, false);
+  assert.equal(collaborationModeCalls, 0);
+});
+
 test('sendChat starts server-side desktop IPC monitoring after desktop handoff', async () => {
   const { service, broadcasts } = makeChatService({
     getDesktopBridgeStatus: async () => ({
@@ -198,7 +231,7 @@ test('sendChat starts server-side desktop IPC monitoring after desktop handoff',
     clientTurnId: 'client-turn-1',
     startedAt: service.getTurn('desktop-turn-1').startedAt,
     status: 'running',
-    steerable: false
+    steerable: true
   }]);
   assert.equal(broadcasts.some((payload) => payload.type === 'status-update' && payload.source === 'desktop-ipc'), true);
 });
@@ -417,7 +450,7 @@ test('sendChat sends desktop-ipc plan requests with desktop collaboration mode',
   assert.equal(started.params.serviceTier, 'fast');
 });
 
-test('sendChat clears desktop collaboration mode for normal follow-up turns', async () => {
+test('sendChat does not send null desktop collaboration mode for normal follow-up turns', async () => {
   let started = null;
   let collaborationUpdate = 'not-called';
   const { service } = makeChatService({
@@ -445,14 +478,11 @@ test('sendChat clears desktop collaboration mode for normal follow-up turns', as
   });
 
   assert.equal(result.delivery, 'started');
-  assert.deepEqual(collaborationUpdate, {
-    conversationId: 'thread-1',
-    collaborationMode: null
-  });
-  assert.equal(started.params.collaborationMode, null);
+  assert.equal(collaborationUpdate, 'not-called');
+  assert.equal('collaborationMode' in started.params, false);
 });
 
-test('sendChat falls back to headless local when an existing desktop-ipc thread has no owner', async () => {
+test('sendChat rejects existing desktop-ipc threads when no desktop owner is available', async () => {
   let runPayload = null;
   const { service, broadcasts } = makeChatService({
     getDesktopBridgeStatus: async () => ({
@@ -467,7 +497,7 @@ test('sendChat falls back to headless local when an existing desktop-ipc thread 
       }
     }),
     startDesktopFollowerTurn: async () => {
-      const error = new Error('桌面端 Codex 已连接，但当前线程没有可接管的桌面窗口。');
+      const error = new Error('no-client-found');
       error.statusCode = 409;
       error.code = 'CODEXMOBILE_DESKTOP_THREAD_OWNER_UNAVAILABLE';
       throw error;
@@ -479,22 +509,25 @@ test('sendChat falls back to headless local when an existing desktop-ipc thread 
     }
   });
 
-  const result = await service.sendChat({
-    projectId: 'project-1',
-    sessionId: 'thread-1',
-    clientTurnId: 'client-turn',
-    message: '桌面窗口不在时继续执行'
-  });
+  await assert.rejects(
+    () => service.sendChat({
+      projectId: 'project-1',
+      sessionId: 'thread-1',
+      clientTurnId: 'client-turn',
+      message: 'desktop owner missing'
+    }),
+    (error) => {
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, 'CODEXMOBILE_DESKTOP_THREAD_OWNER_UNAVAILABLE');
+      return true;
+    }
+  );
 
-  assert.equal(result.accepted, true);
-  assert.equal(result.delivery, 'started');
-  assert.equal(result.desktopBridge.mode, 'headless-local');
-  assert.equal(runPayload.sessionId, 'thread-1');
-  assert.match(runPayload.message, /桌面窗口不在时继续执行/);
-  assert.equal(broadcasts.filter((payload) => payload.type === 'user-message').length, 1);
+  assert.equal(runPayload, null);
+  assert.equal(broadcasts.filter((payload) => payload.type === 'user-message').length, 0);
 });
 
-test('sendChat falls back to headless local when settings sync times out before start', async () => {
+test('sendChat rejects existing desktop-ipc threads when settings sync times out before start', async () => {
   let runPayload = null;
   let startCalled = false;
   const { service } = makeChatService({
@@ -510,7 +543,7 @@ test('sendChat falls back to headless local when settings sync times out before 
       }
     }),
     setDesktopFollowerModelAndReasoning: async () => {
-      const error = new Error('桌面端 Codex IPC 请求超时: thread-follower-set-model-and-reasoning');
+      const error = new Error('Desktop IPC request timed out: thread-follower-set-model-and-reasoning');
       error.code = 'CODEXMOBILE_DESKTOP_IPC_TIMEOUT';
       throw error;
     },
@@ -525,21 +558,24 @@ test('sendChat falls back to headless local when settings sync times out before 
     }
   });
 
-  const result = await service.sendChat({
-    projectId: 'project-1',
-    sessionId: 'thread-1',
-    clientTurnId: 'client-turn',
-    message: '确认执行这个计划',
-    model: 'gpt-5.5',
-    reasoningEffort: 'medium'
-  });
+  await assert.rejects(
+    () => service.sendChat({
+      projectId: 'project-1',
+      sessionId: 'thread-1',
+      clientTurnId: 'client-turn',
+      message: 'sync settings before desktop start',
+      model: 'gpt-5.5',
+      reasoningEffort: 'medium'
+    }),
+    (error) => {
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, 'CODEXMOBILE_DESKTOP_THREAD_OWNER_UNAVAILABLE');
+      return true;
+    }
+  );
 
-  assert.equal(result.accepted, true);
-  assert.equal(result.desktopBridge.mode, 'headless-local');
   assert.equal(startCalled, false);
-  assert.equal(runPayload.sessionId, 'thread-1');
-  assert.equal(runPayload.model, 'gpt-5.5');
-  assert.equal(runPayload.reasoningEffort, 'medium');
+  assert.equal(runPayload, null);
 });
 
 test('sendChat waits for a desktop-ipc owner before falling back to headless local', async () => {
@@ -695,11 +731,12 @@ test('sendChat registers new projectless background threads for mobile and deskt
   let runPayload = null;
   let desktopRegistration = null;
   let mobileRegistration = null;
+  const projectlessRoot = path.join(process.cwd(), '.codexmobile', 'test-projectless');
   const { service } = makeChatService({
     getProject: () => ({
       id: '__codexmobile_projectless__',
       name: '普通对话',
-      path: '/tmp/codex-projectless',
+      path: projectlessRoot,
       projectless: true
     }),
     getDesktopBridgeStatus: async () => ({
@@ -753,10 +790,11 @@ test('sendChat registers new projectless background threads for mobile and deskt
   assert.equal(result.accepted, true);
   assert.equal(runPayload.draftSessionId, 'draft-projectless-1');
   assert.match(runPayload.message, /图片: 午餐\.png \(\/tmp\/lunch\.png\)/);
-  assert.match(runPayload.projectPath, /\/tmp\/codex-projectless\/\d{4}-\d{2}-\d{2}\/mobile-chat-/);
+  assert.equal(runPayload.projectPath.startsWith(path.join(projectlessRoot, new Date().toISOString().slice(0, 10))), true);
+  assert.match(path.basename(runPayload.projectPath), /^mobile-chat-/);
   assert.deepEqual(desktopRegistration, {
     threadId: 'projectless-thread-1',
-    workspaceRoot: '/tmp/codex-projectless'
+    workspaceRoot: projectlessRoot
   });
   assert.equal(mobileRegistration.id, 'projectless-thread-1');
   assert.equal(mobileRegistration.projectless, true);

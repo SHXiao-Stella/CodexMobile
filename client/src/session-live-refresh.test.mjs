@@ -216,7 +216,7 @@ test('desktopRunningActivityPayload exposes a selected desktop running activity 
       turnId: 'turn-new',
       startedAt: '2026-05-08T07:01:00.000Z',
       timestamp: '2026-05-08T07:01:01.000Z',
-      steerable: false
+      steerable: true
     }
   );
 });

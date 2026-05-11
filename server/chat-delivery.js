@@ -1,4 +1,5 @@
 import { buildCodexTurnInput } from './codex-native-images.js';
+import { requestDesktopThreadSnapshotRefresh as defaultRequestDesktopThreadSnapshotRefresh } from './desktop-ipc-client.js';
 
 export async function assertDesktopBridgeAvailable(getDesktopBridgeStatus) {
   const bridge = getDesktopBridgeStatus ? await getDesktopBridgeStatus({ force: true }) : null;
@@ -91,10 +92,23 @@ async function syncDesktopFollowerCollaborationMode({
   collaborationMode,
   setDesktopFollowerCollaborationMode
 }) {
-  if (!setDesktopFollowerCollaborationMode) {
+  if (!setDesktopFollowerCollaborationMode || collaborationMode?.mode !== 'plan') {
     return;
   }
-  await setDesktopFollowerCollaborationMode(selectedSessionId, collaborationMode || null);
+  await setDesktopFollowerCollaborationMode(selectedSessionId, collaborationMode);
+}
+
+function sandboxPolicyForDesktopPermissionMode(permissionMode) {
+  if (permissionMode === 'bypassPermissions') {
+    return { type: 'dangerFullAccess' };
+  }
+  return {
+    type: 'workspaceWrite',
+    writableRoots: [],
+    networkAccess: false,
+    excludeTmpdirEnvVar: false,
+    excludeSlashTmp: false
+  };
 }
 
 export async function sendViaDesktopIpc({
@@ -121,6 +135,7 @@ export async function sendViaDesktopIpc({
   steerDesktopFollowerTurn,
   startDesktopFollowerTurn,
   interruptDesktopFollowerTurn,
+  requestDesktopThreadSnapshotRefresh = defaultRequestDesktopThreadSnapshotRefresh,
   desktopOwnerRetryDelays = [],
   sleep = wait
 }) {
@@ -140,15 +155,15 @@ export async function sendViaDesktopIpc({
     cwd: lastSession?.cwd || project.path || null,
     approvalPolicy: 'never',
     approvalsReviewer: 'user',
-    sandboxPolicy: permissionMode === 'bypassPermissions'
-      ? { type: 'dangerFullAccess' }
-      : { type: 'workspaceWrite', networkAccess: false },
+    sandboxPolicy: sandboxPolicyForDesktopPermissionMode(permissionMode),
     model: model || null,
     effort: reasoningEffort || null,
     serviceTier: serviceTier || null,
-    collaborationMode: collaborationMode || null,
     attachments: []
   };
+  if (collaborationMode?.mode === 'plan') {
+    baseTurnStartParams.collaborationMode = collaborationMode;
+  }
 
   async function attemptDesktopFollowerTurn() {
     if (sendMode === 'steer') {
@@ -168,7 +183,7 @@ export async function sendViaDesktopIpc({
           cwd: lastSession?.cwd || project.path || null,
           context: {
             workspaceRoots: project.path ? [project.path] : [],
-            collaborationMode: collaborationMode || null
+            ...(collaborationMode?.mode === 'plan' ? { collaborationMode } : {})
           },
           responsesapiClientMetadata: null
         }
@@ -212,6 +227,17 @@ export async function sendViaDesktopIpc({
       throw desktopIpcUnavailableError(error?.message || undefined);
     }
     throw error;
+  }
+
+  if (requestDesktopThreadSnapshotRefresh) {
+    try {
+      const refresh = await requestDesktopThreadSnapshotRefresh(selectedSessionId);
+      if (refresh?.sent === false) {
+        console.warn(`[desktop-ipc] desktop refresh broadcast failed session=${selectedSessionId} reason=${refresh.reason || ''}`);
+      }
+    } catch (error) {
+      console.warn(`[desktop-ipc] desktop refresh broadcast failed session=${selectedSessionId} message=${error.message || error}`);
+    }
   }
 
   const appTurnId = result?.result?.turn?.id || result?.turn?.id || turnId;

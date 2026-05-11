@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
@@ -8,9 +9,17 @@ import * as desktopIpc from './desktop-ipc-client.js';
 
 const { DesktopIpcClient, desktopIpcMethodVersion } = desktopIpc;
 
+function testSocketPath(dir) {
+  if (process.platform === 'win32') {
+    return String.raw`\\.\pipe\codexmobile-ipc-test-${process.pid}-${randomUUID()}`;
+  }
+  return path.join(dir, 'ipc.sock');
+}
+
 test('desktop follower IPC methods use the current desktop protocol version', () => {
   assert.equal(desktopIpcMethodVersion('initialize'), 0);
   assert.equal(desktopIpcMethodVersion('thread-archived'), 2);
+  assert.equal(desktopIpcMethodVersion('thread-stream-state-changed'), 6);
   assert.equal(desktopIpcMethodVersion('thread-follower-start-turn'), 1);
   assert.equal(desktopIpcMethodVersion('thread-follower-steer-turn'), 1);
   assert.equal(desktopIpcMethodVersion('thread-follower-interrupt-turn'), 1);
@@ -46,7 +55,7 @@ function readFrame(socket) {
 
 test('sendBroadcast writes desktop IPC broadcast frames', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-ipc-test-'));
-  const socketPath = path.join(dir, 'ipc.sock');
+  const socketPath = testSocketPath(dir);
   const server = net.createServer();
   await new Promise((resolve) => server.listen(socketPath, resolve));
 
@@ -82,7 +91,8 @@ test('sendBroadcast writes desktop IPC broadcast frames', async () => {
   });
 
   client.close();
-  server.close();
+  socket.destroy();
+  await new Promise((resolve) => server.close(resolve));
   await fs.rm(dir, { recursive: true, force: true });
 });
 
@@ -90,7 +100,7 @@ test('broadcastDesktopThreadTitleUpdated writes desktop title update broadcast f
   assert.equal(typeof desktopIpc.broadcastDesktopThreadTitleUpdated, 'function');
 
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-ipc-test-'));
-  const socketPath = path.join(dir, 'ipc.sock');
+  const socketPath = testSocketPath(dir);
   const server = net.createServer();
   await new Promise((resolve) => server.listen(socketPath, resolve));
 
@@ -123,6 +133,48 @@ test('broadcastDesktopThreadTitleUpdated writes desktop title update broadcast f
     title: 'Renamed thread'
   });
 
-  server.close();
+  socket.destroy();
+  await new Promise((resolve) => server.close(resolve));
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('requestDesktopThreadSnapshotRefresh asks desktop owners to rebroadcast snapshots', async () => {
+  assert.equal(typeof desktopIpc.requestDesktopThreadSnapshotRefresh, 'function');
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-ipc-test-'));
+  const socketPath = testSocketPath(dir);
+  const server = net.createServer();
+  await new Promise((resolve) => server.listen(socketPath, resolve));
+
+  const accepted = new Promise((resolve) => server.once('connection', resolve));
+  const sent = desktopIpc.requestDesktopThreadSnapshotRefresh('thread-1', {
+    socketPath,
+    timeoutMs: 1000
+  });
+  const socket = await accepted;
+  const init = await readFrame(socket);
+  socket.write(frameFor({
+    type: 'response',
+    requestId: init.requestId,
+    resultType: 'success',
+    method: 'initialize',
+    result: { clientId: 'client-1' }
+  }));
+  const broadcast = await readFrame(socket);
+  const result = await sent;
+
+  assert.deepEqual(result, { sent: true });
+  assert.equal(broadcast.type, 'broadcast');
+  assert.equal(broadcast.method, 'client-status-changed');
+  assert.equal(broadcast.sourceClientId, 'client-1');
+  assert.equal(broadcast.version, 0);
+  assert.deepEqual(broadcast.params, {
+    clientId: 'client-1',
+    status: 'connected',
+    conversationId: 'thread-1'
+  });
+
+  socket.destroy();
+  await new Promise((resolve) => server.close(resolve));
   await fs.rm(dir, { recursive: true, force: true });
 });

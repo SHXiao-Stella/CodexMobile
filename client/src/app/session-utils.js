@@ -297,7 +297,7 @@ export function resolveNewConversationProject(targetProject, selectedProject, pr
 
 export function isDraftSession(session) {
   const id = typeof session === 'string' ? session : session?.id;
-  return Boolean(session?.draft || id?.startsWith('draft-'));
+  return Boolean(id?.startsWith('draft-'));
 }
 
 export function sessionMessagesApiPath(sessionId, { limit = 120, activity = true } = {}) {

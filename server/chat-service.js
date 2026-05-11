@@ -328,7 +328,8 @@ export function createChatService({
         } catch (error) {
           const canFallBackToBackground =
             error?.code === 'CODEXMOBILE_DESKTOP_THREAD_OWNER_UNAVAILABLE' &&
-            desktopIpcCanUseBackgroundFallback(bridge);
+            desktopIpcCanUseBackgroundFallback(bridge) &&
+            (!selectedSessionId || selectedSessionResolvedFromBackgroundAlias);
           if (!canFallBackToBackground) {
             throw error;
           }

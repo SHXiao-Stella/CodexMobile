@@ -175,3 +175,18 @@ test('activity timeline counts command actions instead of paths found in output'
 
   assert.equal(timeline[0].title, '已搜索 1 次，已探索 1 个文件');
 });
+
+test('generic TypeError tool failures are not classified as browser actions', () => {
+  const timeline = buildActivityTimeline([
+    {
+      id: 'tool-1',
+      kind: 'mcp_tool_call',
+      label: 'operation failed',
+      detail: 'TypeError: Cannot read properties of undefined (reading "find")',
+      toolName: 'functions.shell_command',
+      status: 'failed'
+    }
+  ], false);
+
+  assert.equal(timeline[0].items[0].type, 'tool');
+});

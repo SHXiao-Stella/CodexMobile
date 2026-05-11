@@ -15,7 +15,7 @@ function storedText(storage, key) {
 
 function isDraftSessionLike(session) {
   const id = String(session?.id || '');
-  return Boolean(session?.draft || id.startsWith('draft-'));
+  return id.startsWith('draft-');
 }
 
 export function readStoredSelection(storage = globalThis.localStorage) {

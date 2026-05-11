@@ -4,7 +4,7 @@ export const PERMISSION_OPTIONS = [
   { value: 'bypassPermissions', label: '完全访问', danger: true }
 ];
 
-export const DEFAULT_PERMISSION_MODE = 'bypassPermissions';
+export const DEFAULT_PERMISSION_MODE = 'default';
 
 export const DEFAULT_MODEL_SPEED = 'standard';
 

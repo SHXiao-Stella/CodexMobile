@@ -355,7 +355,7 @@ export function useTurnSubmission({
           previousSessionId: draftSessionId || outgoingSessionId,
           clientTurnId: turnId,
           source: resultRuntimeSource,
-          steerable: resultBridgeMode === 'desktop-ipc' ? false : undefined
+          steerable: resultBridgeMode === 'desktop-ipc' ? true : undefined
         });
       }
       if (shouldPollTurnEndpointAfterSend(result)) {

@@ -151,7 +151,7 @@ function desktopThreadRuntime(thread, contextState = {}) {
     turnId: thread.turnId || null,
     startedAt: isoFromEpochSeconds(thread.startedAt) || null,
     updatedAt: isoFromEpochSeconds(thread.updatedAt) || new Date().toISOString(),
-    steerable: false
+    steerable: true
   };
 }
 

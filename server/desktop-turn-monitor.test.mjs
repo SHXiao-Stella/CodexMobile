@@ -146,7 +146,7 @@ test('desktop turn monitor keeps running when desktop thread has not caught up y
     clientTurnId: 'client-turn-1',
     startedAt: '2026-05-08T08:01:00.000Z',
     status: 'running',
-    steerable: false
+    steerable: true
   }]);
   assert.deepEqual(broadcasts.map((payload) => payload.type), ['status-update']);
 });

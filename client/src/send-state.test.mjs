@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { composerSendState } from './send-state.js';
+import { composerSendState, composerSubmitAction } from './send-state.js';
 
 test('composerSendState blocks sending when the desktop bridge is unavailable', () => {
   const state = composerSendState({
@@ -115,4 +115,26 @@ test('composerSendState allows draft sends through desktop background fallback',
 
   assert.equal(state.disabled, false);
   assert.equal(state.mode, 'start');
+});
+
+test('composerSubmitAction sends directly to a steerable running task', () => {
+  assert.deepEqual(
+    composerSubmitAction({
+      runningInputMode: true,
+      hasInput: true,
+      sendState: { mode: 'steer', canSteer: true }
+    }),
+    { type: 'submit', mode: 'steer' }
+  );
+});
+
+test('composerSubmitAction keeps the send-mode menu for non-steerable running tasks', () => {
+  assert.deepEqual(
+    composerSubmitAction({
+      runningInputMode: true,
+      hasInput: true,
+      sendState: { mode: 'queue', canSteer: false }
+    }),
+    { type: 'menu' }
+  );
 });

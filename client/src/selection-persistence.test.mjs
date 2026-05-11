@@ -64,6 +64,21 @@ test('preserving the current selected session wins over stale stored selection',
   assert.equal(selected.id, 'current-thread');
 });
 
+test('preserving selection replaces stale draft flags on real session ids', () => {
+  const sessions = [
+    { id: 'current-thread', projectId: 'project-1', title: '褰撳墠瀵硅瘽' },
+    { id: 'latest-thread', projectId: 'project-1', title: '鏈€鏂板璇?' }
+  ];
+
+  const selected = selectedSessionFromStoredSelection(sessions, {
+    preserveSelection: true,
+    currentSession: { id: 'current-thread', projectId: 'project-1', draft: true },
+    chooseLatest: true
+  });
+
+  assert.equal(selected, sessions[0]);
+});
+
 test('rememberSelectedSession stores only real sessions, not drafts', () => {
   const values = new Map();
   const storage = {
@@ -76,6 +91,20 @@ test('rememberSelectedSession stores only real sessions, not drafts', () => {
   assert.equal(values.size, 0);
 
   rememberSelectedSession({ id: 'thread-1', projectId: 'project-1' }, storage);
+  assert.equal(storage.getItem('codexmobile.selectedSessionId'), 'thread-1');
+  assert.equal(storage.getItem('codexmobile.selectedProjectId'), 'project-1');
+});
+
+test('rememberSelectedSession stores real ids even when a stale draft flag remains', () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  };
+
+  rememberSelectedSession({ id: 'thread-1', projectId: 'project-1', draft: true }, storage);
+
   assert.equal(storage.getItem('codexmobile.selectedSessionId'), 'thread-1');
   assert.equal(storage.getItem('codexmobile.selectedProjectId'), 'project-1');
 });

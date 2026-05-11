@@ -116,6 +116,22 @@ test('prepareChatRequest keeps drafts separate and preserves mobile-only request
   assert.equal(mobileOnly.turnId, 'generated-turn-2');
 });
 
+test('prepareChatRequest promotes non-draft draftSessionId values to selected sessions', () => {
+  const prepared = prepareChatRequest({
+    draftSessionId: 'thread-from-stale-draft-flag',
+    message: 'continue on desktop'
+  }, {
+    getSession: (sessionId) => ({ id: sessionId, mobileOnly: false, model: 'session-model' }),
+    config: { model: 'config-model', skills: [] },
+    createTurnId: () => 'generated-turn-3'
+  });
+
+  assert.equal(prepared.requestedSessionId, 'thread-from-stale-draft-flag');
+  assert.equal(prepared.selectedSessionId, 'thread-from-stale-draft-flag');
+  assert.equal(prepared.draftSessionId, null);
+  assert.equal(prepared.conversationSessionId, 'thread-from-stale-draft-flag');
+});
+
 test('prepareChatRequest can send an internal prompt while showing a short visible message', () => {
   const prepared = prepareChatRequest({
     projectId: 'project-1',
@@ -145,8 +161,9 @@ test('prepareChatRequest rejects empty text without attachments', () => {
 
 test('projectlessThreadWorkingDirectory creates dated slug directories', async () => {
   const mkdirCalls = [];
+  const root = path.resolve('/tmp/codex-projectless');
   const cwd = await projectlessThreadWorkingDirectory(
-    { path: '/tmp/codex-projectless' },
+    { path: root },
     'Hello world!',
     {
       date: new Date('2026-05-08T03:04:05.000Z'),
@@ -155,6 +172,6 @@ test('projectlessThreadWorkingDirectory creates dated slug directories', async (
     }
   );
 
-  assert.equal(cwd, path.join('/tmp/codex-projectless', '2026-05-08', 'hello-world-21i3v9'));
+  assert.equal(cwd, path.join(root, '2026-05-08', 'hello-world-21i3v9'));
   assert.deepEqual(mkdirCalls, [{ dir: cwd, options: { recursive: true } }]);
 });

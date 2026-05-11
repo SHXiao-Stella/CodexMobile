@@ -139,7 +139,7 @@ export function desktopRunningActivityPayload(messages = [], sessionId = '', sel
     turnId: runningActivity.turnId || selectedRunRuntime?.turnId || runningActivity.sessionId || targetSessionId || null,
     startedAt: runningActivity.startedAt || runningActivity.timestamp || null,
     timestamp: runningActivity.timestamp || runningActivity.startedAt || new Date().toISOString(),
-    steerable: false
+    steerable: true
   };
 }
 
