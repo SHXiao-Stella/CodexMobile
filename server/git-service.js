@@ -1,6 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { registerManagedProcess } from './process-manager.js';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -63,10 +64,17 @@ async function runGit(cwd, args, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   }
 }
 
-async function runGitCapped(cwd, args, { timeoutMs = DEFAULT_TIMEOUT_MS, maxChars = MAX_DIFF_CHARS } = {}) {
+export async function runGitCapped(cwd, args, {
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  maxChars = MAX_DIFF_CHARS,
+  spawnImpl = spawn
+} = {}) {
   return new Promise((resolve, reject) => {
     const limit = Math.max(1000, Number(maxChars) || MAX_DIFF_CHARS);
-    const child = spawn('git', args, gitChildProcessOptions(cwd));
+    const child = spawnImpl('git', args, gitChildProcessOptions(cwd));
+    const unregisterChild = registerManagedProcess(child, {
+      name: `git ${args[0] || 'command'}`
+    });
     let stdout = '';
     let stderr = '';
     let stdoutBytes = 0;
@@ -94,12 +102,14 @@ async function runGitCapped(cwd, args, { timeoutMs = DEFAULT_TIMEOUT_MS, maxChar
       stderr += String(chunk || '');
     });
     child.on('error', (error) => {
+      unregisterChild();
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
       reject(gitError(error));
     });
     child.on('close', (code) => {
+      unregisterChild();
       if (settled) return;
       settled = true;
       clearTimeout(timeout);

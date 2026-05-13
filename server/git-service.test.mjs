@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import path from 'node:path';
 import test from 'node:test';
 import {
@@ -7,8 +8,17 @@ import {
   gitChildProcessOptions,
   normalizeBranchName,
   parseGitStatusShort,
+  runGitCapped,
   truncateGitOutput
 } from './git-service.js';
+import {
+  __resetManagedProcessesForTest,
+  managedProcessSnapshot
+} from './process-manager.js';
+
+test.afterEach(() => {
+  __resetManagedProcessesForTest();
+});
 
 test('parseGitStatusShort reads branch, ahead/behind, and changed files', () => {
   const status = parseGitStatusShort([
@@ -77,6 +87,30 @@ test('git child processes are hidden on Windows', () => {
   assert.equal(options.windowsHide, true);
   assert.equal(options.cwd, '/repo');
   assert.equal(options.timeout, 1000);
+});
+
+test('capped git diff child process is managed until it closes', async () => {
+  const child = new EventEmitter();
+  child.pid = 4201;
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = () => {};
+
+  const resultPromise = runGitCapped('/repo', ['diff', 'HEAD', '--'], {
+    spawnImpl: () => child,
+    timeoutMs: 1000
+  });
+
+  assert.deepEqual(managedProcessSnapshot().map((entry) => [entry.pid, entry.name]), [
+    [4201, 'git diff']
+  ]);
+
+  child.stdout.emit('data', Buffer.from('diff output'));
+  child.emit('close', 0);
+
+  const result = await resultPromise;
+  assert.equal(result.stdout, 'diff output');
+  assert.deepEqual(managedProcessSnapshot(), []);
 });
 
 test('git service returns truncated diff with status', async () => {

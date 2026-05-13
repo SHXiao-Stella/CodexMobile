@@ -8,6 +8,7 @@ import {
   broadcastDesktopThreadTitleUpdated,
   probeDesktopIpc
 } from './desktop-ipc-client.js';
+import { registerManagedProcess } from './process-manager.js';
 
 const DEFAULT_CODEX_APP_BINARY = '/Applications/Codex.app/Contents/Resources/codex';
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -157,7 +158,8 @@ export class CodexAppServerClient {
     onServerRequest = null,
     allowReadOnlyIsolated = false,
     allowHeadlessLocal = false,
-    transport = null
+    transport = null,
+    spawnImpl = spawn
   } = {}) {
     this.env = env;
     this.cwd = cwd;
@@ -172,7 +174,9 @@ export class CodexAppServerClient {
       ...env,
       CODEXMOBILE_ALLOW_ISOLATED_CODEX: allowReadOnlyIsolated ? '1' : env.CODEXMOBILE_ALLOW_ISOLATED_CODEX
     }, { allowHeadlessLocal });
+    this.spawnImpl = spawnImpl;
     this.child = null;
+    this.unregisterChild = null;
     this.readline = null;
     this.nextId = 1;
     this.pending = new Map();
@@ -192,10 +196,13 @@ export class CodexAppServerClient {
     const args = this.transport.mode === 'desktop-proxy'
       ? ['app-server', 'proxy', '--sock', this.transport.sockPath]
       : ['app-server', '--listen', 'stdio://'];
-    this.child = spawn(resolveCodexBinary(), args, codexAppServerSpawnOptions({
+    this.child = this.spawnImpl(resolveCodexBinary(), args, codexAppServerSpawnOptions({
       cwd: this.cwd,
       env: this.env
     }));
+    this.unregisterChild = registerManagedProcess(this.child, {
+      name: `codex app-server ${this.transport.mode}`
+    });
 
     this.readline = readline.createInterface({
       input: this.child.stdout,
@@ -211,10 +218,14 @@ export class CodexAppServerClient {
     });
 
     this.child.on('error', (error) => {
+      this.unregisterChild?.();
+      this.unregisterChild = null;
       this.rejectAll(error);
       this.resolveClosed?.({ code: null, signal: null, error });
     });
     this.child.on('close', (code, signal) => {
+      this.unregisterChild?.();
+      this.unregisterChild = null;
       const error = responseError(
         this.stderr.trim() || `Codex app-server exited with ${code ?? signal ?? 'unknown status'}`
       );
@@ -336,6 +347,8 @@ export class CodexAppServerClient {
     if (this.child && !this.child.killed) {
       this.child.kill();
     }
+    this.unregisterChild?.();
+    this.unregisterChild = null;
   }
 }
 

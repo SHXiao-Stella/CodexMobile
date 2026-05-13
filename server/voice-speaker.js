@@ -6,6 +6,7 @@ import path from 'node:path';
 import WebSocket from 'ws';
 
 import { DEFAULT_OPENAI_COMPATIBLE_BASE_URL, openAICompatibleConfig } from './provider-api.js';
+import { registerManagedProcess } from './process-manager.js';
 
 const DEFAULT_SPEECH_MODEL = 'gpt-4o-mini-tts';
 const DEFAULT_SPEECH_VOICE = 'coral';
@@ -408,6 +409,7 @@ function runWindowsSapi({ text, outputPath }) {
       },
       windowsHide: true
     });
+    const unregisterChild = registerManagedProcess(child, { name: 'powershell local speech' });
 
     const finish = (error) => {
       if (settled) {
@@ -440,9 +442,11 @@ function runWindowsSapi({ text, outputPath }) {
     }, LOCAL_SPEECH_TIMEOUT_MS);
 
     child.on('error', (error) => {
+      unregisterChild();
       finish(error);
     });
     child.on('close', (code) => {
+      unregisterChild();
       if (code === 0) {
         finish();
         return;

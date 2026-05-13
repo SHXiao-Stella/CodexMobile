@@ -1,12 +1,23 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import test from 'node:test';
 import {
+  CodexAppServerClient,
   codexAppServerSpawnOptions,
   desktopBridgeStatusForAppServerTransport,
   listDesktopThreads,
   readDesktopThread,
   resolveAppServerTransport
 } from './codex-app-server.js';
+import {
+  __resetManagedProcessesForTest,
+  managedProcessSnapshot
+} from './process-manager.js';
+
+test.afterEach(() => {
+  __resetManagedProcessesForTest();
+});
 
 test('resolveAppServerTransport is strict and unavailable without a desktop socket', () => {
   const transport = resolveAppServerTransport({
@@ -47,6 +58,33 @@ test('codex app-server child process is hidden on Windows', () => {
   assert.equal(options.windowsHide, true);
   assert.equal(options.cwd, '/repo');
   assert.deepEqual(options.stdio, ['pipe', 'pipe', 'pipe']);
+});
+
+test('codex app-server child process is managed until it closes', () => {
+  const child = new EventEmitter();
+  child.pid = 4101;
+  child.stdin = new PassThrough();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => {};
+
+  const client = new CodexAppServerClient({
+    env: { CODEXMOBILE_CODEX_BINARY: process.execPath },
+    transport: { mode: 'headless-local', connected: true, strict: false },
+    spawnImpl: () => child
+  });
+
+  try {
+    client.start();
+    assert.deepEqual(managedProcessSnapshot().map((entry) => [entry.pid, entry.name]), [
+      [4101, 'codex app-server headless-local']
+    ]);
+
+    child.emit('close', 0, null);
+    assert.deepEqual(managedProcessSnapshot(), []);
+  } finally {
+    client.close();
+  }
 });
 
 test('desktop bridge status reports headless fallback without spawning app-server', () => {

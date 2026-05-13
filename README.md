@@ -6,11 +6,14 @@ CodexMobile 是一个运行在自己电脑上的私有移动端 Codex 控制台�
 
 Plan mode 和用户输入卡片部分也参考了 [bingqldx/CodexMobile](https://github.com/bingqldx/CodexMobile) 的实现思路，尤其是显式 Plan 入口和 app-server user-input request 的移动端卡片交互。本 fork 没有直接合并它的大型 `App.jsx` / `server/index.js` 重构，而是把相关能力迁入当前更模块化的结构。
 
+后台子进程管理参考了 [StephenPCG/CodexMobile](https://github.com/StephenPCG/CodexMobile) 的 `process-manager` 思路，用来登记和清理 CodexMobile 服务内部启动的 Codex app-server、lark-cli、Git diff 和本地语音合成子进程。本 fork 目前只迁移这部分稳定性能力，没有迁移它的 Web Terminal、runtime config、Homebrew packaging 或 ASR Docker 管理。
+
 ## 这个 Fork 新增了什么
 
 - **Windows Codex Desktop IPC 接入**：在 Desktop IPC 可用时，手机端可以向已有 Codex Desktop 线程发送和 steer 消息。
 - **本地历史线程 fallback**：当 Codex app-server 的 `thread/list` 读不到历史线程时，自动从 `~/.codex/session_index.jsonl` 和 `~/.codex/sessions/**/*.jsonl` 重建线程列表。
 - **隐藏 Windows 子进程窗口**：启动 Codex app-server 和 Git helper 时隐藏子进程窗口，避免手机连接或刷新时反复弹 `cmd` 窗口。
+- **后台子进程管理**：服务关闭时会先关闭 WebSocket/HTTP/HTTPS，再清理仍在运行的 Codex app-server、lark-cli、Git diff 和本地语音合成子进程，减少后台残留。
 - **默认权限更保守**：手机 composer 默认使用普通/默认权限，而不是完全访问。
 - **Plan mode 显式入口**：composer 里有 Chat/Plan 模式入口；`/plan` 和 `/计划` 会切换到 Plan mode，而不是作为普通文本发送。
 - **用户输入卡片**：Codex app-server 发出的 `item/tool/requestUserInput` 可以在手机端显示为卡片，并从手机提交或取消。
@@ -97,6 +100,7 @@ Plan mode 和用户输入卡片部分也参考了 [bingqldx/CodexMobile](https:/
   |-- Codex Desktop IPC handoff
   |-- Codex app-server / background runner fallback
   |-- Git service
+  |-- managed child process cleanup
   |-- upload / static file service
   |-- Web Push service
   |-- 可选语音、图片、飞书、CLIProxyAPI 集成
@@ -264,7 +268,7 @@ npm run smoke
 当前分支常用测试：
 
 ```powershell
-node --test client\src\composer\composer-options.test.mjs client\src\send-state.test.mjs client\src\turn-submission-utils.test.mjs client\src\session-live-refresh.test.mjs server\chat-request-prep.test.mjs server\chat-service.test.mjs server\codex-runner-status.test.mjs server\desktop-ipc-client.test.mjs server\git-service.test.mjs server\local-session-index.test.mjs server\session-index-builder.test.mjs server\session-message-reader.test.mjs server\codex-app-server.test.mjs client\src\web-push-client.test.mjs client\src\notification-events.test.mjs
+node --test client\src\composer\composer-options.test.mjs client\src\send-state.test.mjs client\src\turn-submission-utils.test.mjs client\src\session-live-refresh.test.mjs server\chat-request-prep.test.mjs server\chat-service.test.mjs server\codex-runner-status.test.mjs server\desktop-ipc-client.test.mjs server\git-service.test.mjs server\local-session-index.test.mjs server\session-index-builder.test.mjs server\session-message-reader.test.mjs server\codex-app-server.test.mjs server\process-manager.test.mjs client\src\web-push-client.test.mjs client\src\notification-events.test.mjs
 ```
 
 ## 本地数据位置
