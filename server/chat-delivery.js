@@ -1,5 +1,6 @@
 import { buildCodexTurnInput } from './codex-native-images.js';
 import { requestDesktopThreadSnapshotRefresh as defaultRequestDesktopThreadSnapshotRefresh } from './desktop-ipc-client.js';
+import { openCodexDesktopThread as defaultOpenCodexDesktopThread } from './desktop-thread-opener.js';
 
 export async function assertDesktopBridgeAvailable(getDesktopBridgeStatus) {
   const bridge = getDesktopBridgeStatus ? await getDesktopBridgeStatus({ force: true }) : null;
@@ -136,6 +137,8 @@ export async function sendViaDesktopIpc({
   startDesktopFollowerTurn,
   interruptDesktopFollowerTurn,
   requestDesktopThreadSnapshotRefresh = defaultRequestDesktopThreadSnapshotRefresh,
+  openDesktopThread = defaultOpenCodexDesktopThread,
+  openDesktopThreadDelayMs = 900,
   desktopOwnerRetryDelays = [],
   sleep = wait
 }) {
@@ -207,13 +210,27 @@ export async function sendViaDesktopIpc({
 
   let result;
   const ownerRetryDelays = retryDelays(desktopOwnerRetryDelays);
+  let attemptedDesktopOpen = false;
   try {
     for (let attempt = 0; ; attempt += 1) {
       try {
         result = await attemptDesktopFollowerTurn();
         break;
       } catch (error) {
-        if (!isDesktopThreadOwnerUnavailable(error) || attempt >= ownerRetryDelays.length) {
+        if (!isDesktopThreadOwnerUnavailable(error)) {
+          throw error;
+        }
+        if (!attemptedDesktopOpen && openDesktopThread) {
+          attemptedDesktopOpen = true;
+          const opened = await openDesktopThread(selectedSessionId);
+          if (opened?.opened) {
+            if (openDesktopThreadDelayMs > 0) {
+              await sleep(openDesktopThreadDelayMs);
+            }
+            continue;
+          }
+        }
+        if (attempt >= ownerRetryDelays.length) {
           throw error;
         }
         const delay = ownerRetryDelays[attempt] || 0;

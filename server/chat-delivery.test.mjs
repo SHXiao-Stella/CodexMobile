@@ -78,3 +78,36 @@ test('desktop ipc default permission sends a complete workspaceWrite sandbox pol
     excludeSlashTmp: false
   });
 });
+
+test('desktop ipc opens the desktop thread deeplink before retrying a missing owner', async () => {
+  const opened = [];
+  const sleeps = [];
+  let attempts = 0;
+  const sessionId = '019da0fa-e201-7a02-bec4-1bbc7d54da04';
+
+  const result = await sendViaDesktopIpc(baseDesktopIpcSend({
+    selectedSessionId: sessionId,
+    startDesktopFollowerTurn: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        const error = new Error('no-client-found');
+        error.statusCode = 409;
+        throw error;
+      }
+      return { result: { turn: { id: 'desktop-turn-after-open' } } };
+    },
+    openDesktopThread: async (conversationId) => {
+      opened.push(conversationId);
+      return { opened: true, url: `codex://threads/${conversationId}` };
+    },
+    sleep: async (ms) => {
+      sleeps.push(ms);
+    },
+    requestDesktopThreadSnapshotRefresh: async () => ({ sent: true })
+  }));
+
+  assert.equal(result.turnId, 'desktop-turn-after-open');
+  assert.deepEqual(opened, [sessionId]);
+  assert.deepEqual(sleeps, [900]);
+  assert.equal(attempts, 2);
+});
