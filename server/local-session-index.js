@@ -7,6 +7,20 @@ import {
 
 const THREAD_ID_RE = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
 const FIRST_LINE_READ_LIMIT = 1024 * 1024;
+const jsonlMetaCache = new Map();
+
+let lastLocalSessionIndexDiagnostics = {
+  startedAt: null,
+  completedAt: null,
+  durationMs: null,
+  visitedFiles: 0,
+  jsonlFiles: 0,
+  metaCacheHits: 0,
+  metaCacheMisses: 0,
+  metaCacheSize: 0,
+  returnedThreads: 0,
+  error: null
+};
 
 function timestampSeconds(value) {
   const ms = Date.parse(value || '');
@@ -72,6 +86,7 @@ async function readSessionIndex(indexPath) {
 
 async function walkJsonlFiles(root) {
   const files = [];
+  let visitedFiles = 0;
   async function visit(dir) {
     let entries = [];
     try {
@@ -86,13 +101,16 @@ async function walkJsonlFiles(root) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         await visit(fullPath);
-      } else if (entry.isFile() && entry.name.endsWith('.jsonl') && threadIdFromFile(fullPath)) {
-        files.push(fullPath);
+      } else if (entry.isFile()) {
+        visitedFiles += 1;
+        if (entry.name.endsWith('.jsonl') && threadIdFromFile(fullPath)) {
+          files.push(fullPath);
+        }
       }
     }
   }
   await visit(root);
-  return files;
+  return { files, visitedFiles };
 }
 
 async function readFirstJsonLine(filePath) {
@@ -124,6 +142,42 @@ async function readFirstJsonLine(filePath) {
   }
 }
 
+function cacheKey(filePath) {
+  return path.resolve(filePath);
+}
+
+async function readCachedFirstJsonLine(filePath, stat, diagnostics) {
+  const key = cacheKey(filePath);
+  const mtimeMs = Number(stat?.mtimeMs || 0);
+  const size = Number(stat?.size || 0);
+  const cached = jsonlMetaCache.get(key);
+  if (cached && cached.mtimeMs === mtimeMs && cached.size === size) {
+    diagnostics.metaCacheHits += 1;
+    return cached.metaRow;
+  }
+  const metaRow = await readFirstJsonLine(filePath);
+  diagnostics.metaCacheMisses += 1;
+  jsonlMetaCache.set(key, {
+    mtimeMs,
+    size,
+    metaRow
+  });
+  return metaRow;
+}
+
+function pruneJsonlMetaCache(files = []) {
+  const active = new Set(files.map(cacheKey));
+  for (const key of jsonlMetaCache.keys()) {
+    if (!active.has(key)) {
+      jsonlMetaCache.delete(key);
+    }
+  }
+}
+
+export function clearLocalSessionIndexCache() {
+  jsonlMetaCache.clear();
+}
+
 export function mergeDesktopThreadLists(primaryThreads = [], fallbackThreads = []) {
   const byId = new Map();
   for (const thread of fallbackThreads) {
@@ -144,62 +198,100 @@ export async function readLocalSessionThreads({
   sessionsDir = CODEX_SESSIONS_DIR,
   limit = 1000
 } = {}) {
-  const indexEntries = await readSessionIndex(sessionIndexPath);
-  const files = await walkJsonlFiles(sessionsDir);
-  const entries = new Map(indexEntries);
+  const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
+  const diagnostics = {
+    startedAt,
+    completedAt: null,
+    durationMs: null,
+    visitedFiles: 0,
+    jsonlFiles: 0,
+    metaCacheHits: 0,
+    metaCacheMisses: 0,
+    metaCacheSize: 0,
+    returnedThreads: 0,
+    error: null
+  };
 
-  await Promise.all(files.map(async (filePath) => {
-    const id = threadIdFromFile(filePath);
-    if (!id) {
-      return;
-    }
-    const stat = await fs.stat(filePath);
-    const existing = entries.get(id) || { id };
-    const currentPath = existing.path;
-    const currentMtime = Number(existing.fileMtimeMs || 0);
-    if (!currentPath || stat.mtimeMs >= currentMtime) {
-      entries.set(id, {
-        ...existing,
-        path: filePath,
-        fileMtimeMs: stat.mtimeMs,
-        fallbackUpdatedAtIso: existing.updatedAtIso || stat.mtime.toISOString()
+  try {
+    const indexEntries = await readSessionIndex(sessionIndexPath);
+    const { files, visitedFiles } = await walkJsonlFiles(sessionsDir);
+    pruneJsonlMetaCache(files);
+    diagnostics.visitedFiles = visitedFiles;
+    diagnostics.jsonlFiles = files.length;
+    const entries = new Map(indexEntries);
+
+    await Promise.all(files.map(async (filePath) => {
+      const id = threadIdFromFile(filePath);
+      if (!id) {
+        return;
+      }
+      const stat = await fs.stat(filePath);
+      const existing = entries.get(id) || { id };
+      const currentPath = existing.path;
+      const currentMtime = Number(existing.fileMtimeMs || 0);
+      if (!currentPath || stat.mtimeMs >= currentMtime) {
+        entries.set(id, {
+          ...existing,
+          path: filePath,
+          fileMtimeMs: stat.mtimeMs,
+          fileSize: stat.size,
+          fallbackUpdatedAtIso: existing.updatedAtIso || stat.mtime.toISOString()
+        });
+      }
+    }));
+
+    const threads = [];
+    for (const entry of entries.values()) {
+      if (!entry.path) {
+        continue;
+      }
+      let metaRow = null;
+      try {
+        metaRow = await readCachedFirstJsonLine(entry.path, {
+          mtimeMs: entry.fileMtimeMs,
+          size: entry.fileSize
+        }, diagnostics);
+      } catch {
+        continue;
+      }
+      const meta = metaRow?.type === 'session_meta' ? metaRow.payload || {} : {};
+      const cwd = String(meta.cwd || '').trim();
+      if (!cwd) {
+        continue;
+      }
+      const updatedAt = timestampSeconds(entry.updatedAtIso)
+        ?? timestampSeconds(entry.fallbackUpdatedAtIso)
+        ?? timestampSeconds(meta.timestamp)
+        ?? Number(entry.fileMtimeMs || 0) / 1000;
+      threads.push({
+        id: entry.id,
+        name: entry.name || meta.thread_name || null,
+        cwd,
+        path: entry.path,
+        preview: '',
+        updatedAt,
+        source: meta.source || 'local-session-index',
+        modelProvider: meta.model_provider || meta.modelProvider || null
       });
     }
-  }));
 
-  const threads = [];
-  for (const entry of entries.values()) {
-    if (!entry.path) {
-      continue;
-    }
-    let metaRow = null;
-    try {
-      metaRow = await readFirstJsonLine(entry.path);
-    } catch {
-      continue;
-    }
-    const meta = metaRow?.type === 'session_meta' ? metaRow.payload || {} : {};
-    const cwd = String(meta.cwd || '').trim();
-    if (!cwd) {
-      continue;
-    }
-    const updatedAt = timestampSeconds(entry.updatedAtIso)
-      ?? timestampSeconds(entry.fallbackUpdatedAtIso)
-      ?? timestampSeconds(meta.timestamp)
-      ?? Number(entry.fileMtimeMs || 0) / 1000;
-    threads.push({
-      id: entry.id,
-      name: entry.name || meta.thread_name || null,
-      cwd,
-      path: entry.path,
-      preview: '',
-      updatedAt,
-      source: meta.source || 'local-session-index',
-      modelProvider: meta.model_provider || meta.modelProvider || null
-    });
+    const result = threads
+      .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
+      .slice(0, limit);
+    diagnostics.returnedThreads = result.length;
+    return result;
+  } catch (error) {
+    diagnostics.error = error?.message || 'Unknown local session index error';
+    throw error;
+  } finally {
+    diagnostics.completedAt = new Date().toISOString();
+    diagnostics.durationMs = Date.now() - startedMs;
+    diagnostics.metaCacheSize = jsonlMetaCache.size;
+    lastLocalSessionIndexDiagnostics = { ...diagnostics };
   }
+}
 
-  return threads
-    .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
-    .slice(0, limit);
+export function getLocalSessionIndexDiagnostics() {
+  return { ...lastLocalSessionIndexDiagnostics };
 }

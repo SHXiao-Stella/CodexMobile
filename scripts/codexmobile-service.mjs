@@ -117,6 +117,30 @@ export function parsePids(output) {
     .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
 }
 
+function parseWindowsNetstatListenerPids(output, port) {
+  const expected = `:${Number(port)}`;
+  const pids = new Set();
+  for (const line of String(output || '').split(/\r?\n/)) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 5 || parts[0].toUpperCase() !== 'TCP') {
+      continue;
+    }
+    const localAddress = parts[1] || '';
+    const state = parts[3] || '';
+    const pid = Number(parts[4]);
+    if (
+      state.toUpperCase() === 'LISTENING' &&
+      localAddress.endsWith(expected) &&
+      Number.isInteger(pid) &&
+      pid > 0 &&
+      pid !== process.pid
+    ) {
+      pids.add(pid);
+    }
+  }
+  return [...pids];
+}
+
 export function listenerPidsForPort(value) {
   const port = Number(value);
   if (!Number.isInteger(port) || port <= 0) {
@@ -131,7 +155,15 @@ export function listenerPidsForPort(value) {
       encoding: 'utf8',
       windowsHide: true
     });
-    return parsePids(result.stdout);
+    const powershellPids = parsePids(result.stdout);
+    if (powershellPids.length) {
+      return powershellPids;
+    }
+    const netstatResult = spawnSync('netstat.exe', ['-ano', '-p', 'tcp'], {
+      encoding: 'utf8',
+      windowsHide: true
+    });
+    return parseWindowsNetstatListenerPids(netstatResult.stdout, port);
   }
   const result = spawnSync('lsof', [`-tiTCP:${port}`, '-sTCP:LISTEN'], {
     encoding: 'utf8'
@@ -162,6 +194,32 @@ export function commandForPid(pid) {
     encoding: 'utf8'
   });
   return result.status === 0 ? String(result.stdout || '').trim() : '';
+}
+
+export async function portRespondsAsCodexMobile(value, { timeoutMs = 800 } = {}) {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port <= 0) {
+    return false;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/status`, {
+      signal: controller.signal,
+      cache: 'no-store'
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const data = await response.json();
+    return data?.connected === true &&
+      data?.auth?.required === true &&
+      (data?.provider === 'codex' || data?.desktopBridge || data?.hostName);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function pidIsAlive(pid) {

@@ -17,6 +17,12 @@ export function classifyUpload(mimeType) {
   return String(mimeType || '').startsWith('image/') ? 'image' : 'file';
 }
 
+function uploadCleanupDefaults() {
+  return {
+    maxAgeMs: Math.max(1, Number(process.env.CODEXMOBILE_UPLOAD_MAX_AGE_DAYS) || 7) * 24 * 60 * 60 * 1000
+  };
+}
+
 export function parseMultipartFile(buffer, contentType, fieldName = 'file') {
   const boundary = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)?.[1] || contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)?.[2];
   if (!boundary) {
@@ -139,6 +145,76 @@ export async function saveUpload(req, {
     path: filePath,
     kind: classifyUpload(part.mimeType)
   };
+}
+
+export async function cleanupUploadCache({
+  uploadRoot,
+  now = () => new Date(),
+  maxAgeMs = uploadCleanupDefaults().maxAgeMs,
+  logger = console
+} = {}) {
+  const root = String(uploadRoot || '').trim();
+  if (!root || !Number.isFinite(maxAgeMs) || maxAgeMs <= 0) {
+    return { deletedFiles: 0, keptFiles: 0, deletedDirs: 0, errors: 0 };
+  }
+
+  const cutoffMs = now().getTime() - maxAgeMs;
+  const summary = { deletedFiles: 0, keptFiles: 0, deletedDirs: 0, errors: 0 };
+  let folders = [];
+  try {
+    folders = await fs.readdir(root, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return summary;
+    }
+    throw error;
+  }
+
+  for (const folder of folders) {
+    if (!folder.isDirectory()) {
+      continue;
+    }
+    const folderPath = path.join(root, folder.name);
+    let entries = [];
+    try {
+      entries = await fs.readdir(folderPath, { withFileTypes: true });
+    } catch (error) {
+      summary.errors += 1;
+      logger?.warn?.('[upload] failed to scan upload folder:', error.message);
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile()) {
+        continue;
+      }
+      const filePath = path.join(folderPath, entry.name);
+      try {
+        const stat = await fs.stat(filePath);
+        if (stat.mtimeMs < cutoffMs) {
+          await fs.rm(filePath, { force: true });
+          summary.deletedFiles += 1;
+        } else {
+          summary.keptFiles += 1;
+        }
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          summary.errors += 1;
+          logger?.warn?.('[upload] failed to clean upload file:', error.message);
+        }
+      }
+    }
+    try {
+      const remaining = await fs.readdir(folderPath);
+      if (!remaining.length) {
+        await fs.rmdir(folderPath);
+        summary.deletedDirs += 1;
+      }
+    } catch {
+      // Best effort: folder may have been modified while cleanup was running.
+    }
+  }
+
+  return summary;
 }
 
 export function normalizeAttachments(value) {

@@ -14,8 +14,10 @@ import {
 } from './auth.js';
 import {
   deleteSession,
+  getCacheDiagnostics,
   getCacheSnapshot,
   getHostName,
+  getLastSyncDiagnostics,
   getProject,
   getSession,
   hideSessionMessage,
@@ -34,6 +36,7 @@ import { createFeishuIntegration } from './feishu-routes.js';
 import { createFileRouteHandler } from './file-routes.js';
 import { createGitRouteHandler } from './git-routes.js';
 import { createGitService } from './git-service.js';
+import { createDiagnosticsRouteHandler } from './diagnostics-routes.js';
 import { createNotificationRouteHandler } from './notification-routes.js';
 import { createSessionRouteHandler } from './session-routes.js';
 import { createVoiceRouteHandler } from './voice-routes.js';
@@ -57,6 +60,7 @@ import { readBody, sendJson } from './http-utils.js';
 import { installManagedProcessShutdown, managedProcessSnapshot } from './process-manager.js';
 import { createPushService } from './push-service.js';
 import { createStaticService } from './static-service.js';
+import { createMemoryDiagnosticsSnapshot } from './memory-diagnostics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -224,6 +228,20 @@ const handleChatApi = createChatRouteHandler({
   remoteAddress
 });
 
+function getMemoryDiagnosticsSnapshot() {
+  return createMemoryDiagnosticsSnapshot({
+    socketCount: () => sockets.size,
+    cacheSnapshot: getCacheDiagnostics,
+    syncDiagnostics: getLastSyncDiagnostics,
+    chatDiagnostics: chatService.getDiagnostics,
+    managedProcesses: managedProcessSnapshot
+  });
+}
+
+const handleDiagnosticsApi = createDiagnosticsRouteHandler({
+  getMemoryDiagnostics: getMemoryDiagnosticsSnapshot
+});
+
 function startSyncRefresh() {
   if (!syncRefreshPromise) {
     syncRefreshPromise = refreshCodexCache().finally(() => {
@@ -287,6 +305,7 @@ async function publicStatus(authenticated) {
     syncedAt: snapshot.syncedAt,
     activeRuns: [...getActiveRuns(), ...chatService.getActiveDesktopIpcRuns(), ...chatService.getActiveImageRuns()],
     managedProcesses: authenticated ? managedProcessSnapshot() : [],
+    memoryDiagnostics: authenticated ? getMemoryDiagnosticsSnapshot() : null,
     auth: {
       required: true,
       authenticated,
@@ -326,6 +345,10 @@ async function handleApi(req, res, url) {
   }
 
   if (!(await requireAuth(req, res, pathname, url))) {
+    return;
+  }
+
+  if (await handleDiagnosticsApi(req, res, url)) {
     return;
   }
 

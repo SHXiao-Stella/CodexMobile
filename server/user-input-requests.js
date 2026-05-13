@@ -110,6 +110,18 @@ export class PendingUserInputRequests {
     }));
   }
 
+  getDiagnostics() {
+    const pendingByThread = {};
+    for (const record of this.records.values()) {
+      const threadId = record.request.threadId || 'unknown';
+      pendingByThread[threadId] = (pendingByThread[threadId] || 0) + 1;
+    }
+    return {
+      pendingCount: this.records.size,
+      pendingByThread
+    };
+  }
+
   answer({ threadId, sessionId, turnId, itemId, answers }) {
     const key = userInputRequestKey({ threadId: threadId || sessionId, turnId, itemId });
     const record = this.records.get(key);

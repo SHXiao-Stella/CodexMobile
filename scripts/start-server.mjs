@@ -10,6 +10,7 @@ import {
   listenerPidsForPort,
   pidFilePath,
   pidIsAlive,
+  portRespondsAsCodexMobile,
   serviceChildPath
 } from './codexmobile-service.mjs';
 
@@ -120,10 +121,14 @@ function sleep(ms) {
 }
 
 async function stopExistingServer() {
-  const pids = listenerPidsForPort(port).filter((pid) => {
+  const listenerPids = listenerPidsForPort(port);
+  let pids = listenerPids.filter((pid) => {
     const command = commandForPid(pid);
     return commandMatchesCodexMobileServer(command, { root, allowLegacy: true });
   });
+  if (!pids.length && listenerPids.length && await portRespondsAsCodexMobile(port)) {
+    pids = listenerPids;
+  }
   if (!pids.length) {
     return;
   }

@@ -10,6 +10,7 @@ import {
   renameMobileSession
 } from './mobile-session-index.js';
 import {
+  getLocalSessionIndexDiagnostics,
   mergeDesktopThreadLists,
   readLocalSessionThreads
 } from './local-session-index.js';
@@ -42,6 +43,24 @@ let cache = {
   projectById: new Map(),
   sessionsByProject: new Map(),
   sessionById: new Map()
+};
+
+let lastSyncDiagnostics = {
+  startedAt: null,
+  completedAt: null,
+  durationMs: null,
+  desktopThreadCount: 0,
+  localThreadCount: 0,
+  scannedFiles: 0,
+  visitedFiles: 0,
+  jsonlFiles: 0,
+  metaCacheHits: 0,
+  metaCacheMisses: 0,
+  metaCacheSize: 0,
+  finalSessionCount: 0,
+  projectCount: 0,
+  sessionCount: 0,
+  error: null
 };
 
 async function resolveSessionThread(sessionId) {
@@ -106,40 +125,82 @@ async function readThreadSpawnEdges() {
 }
 
 export async function refreshCodexCache() {
-  const config = await readCodexConfig();
-  const workspaceState = await readCodexWorkspaceState();
-  const mobileSessionIndex = await readMobileSessionIndex();
-  const hiddenSessionIds = await readHiddenSessionIds();
-  const spawnEdges = INCLUDE_MISSING_SUBAGENT_THREADS ? await readThreadSpawnEdges() : [];
-  const [desktopThreads, localSessionThreads] = await Promise.all([
-    listDesktopThreads({ limit: 1000 }).catch((error) => {
-      console.warn('[sessions] Failed to list desktop threads:', error.message);
-      return [];
-    }),
-    readLocalSessionThreads({ limit: 1000 }).catch((error) => {
-      console.warn('[sessions] Failed to read local session index:', error.message);
-      return [];
-    })
-  ]);
-  const sessionIndex = await buildSessionIndex({
-    config,
-    workspaceState,
-    mobileSessionIndex,
-    hiddenSessionIds,
-    desktopThreads: mergeDesktopThreadLists(desktopThreads, localSessionThreads),
-    spawnEdges,
-    includeMissingSubagentThreads: INCLUDE_MISSING_SUBAGENT_THREADS,
-    readDesktopThread,
-    readRolloutContextState
-  });
-
-  cache = {
-    syncedAt: new Date().toISOString(),
-    config,
-    ...sessionIndex
+  const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
+  const diagnostics = {
+    startedAt,
+    completedAt: null,
+    durationMs: null,
+    desktopThreadCount: 0,
+    localThreadCount: 0,
+    scannedFiles: 0,
+    visitedFiles: 0,
+    jsonlFiles: 0,
+    metaCacheHits: 0,
+    metaCacheMisses: 0,
+    metaCacheSize: 0,
+    finalSessionCount: 0,
+    projectCount: 0,
+    sessionCount: 0,
+    error: null
   };
 
-  return getCacheSnapshot();
+  try {
+    const config = await readCodexConfig();
+    const workspaceState = await readCodexWorkspaceState();
+    const mobileSessionIndex = await readMobileSessionIndex();
+    const hiddenSessionIds = await readHiddenSessionIds();
+    const spawnEdges = INCLUDE_MISSING_SUBAGENT_THREADS ? await readThreadSpawnEdges() : [];
+    const [desktopThreads, localSessionThreads] = await Promise.all([
+      listDesktopThreads({ limit: 1000 }).catch((error) => {
+        console.warn('[sessions] Failed to list desktop threads:', error.message);
+        return [];
+      }),
+      readLocalSessionThreads({ limit: 1000 }).catch((error) => {
+        console.warn('[sessions] Failed to read local session index:', error.message);
+        return [];
+      })
+    ]);
+    const localDiagnostics = getLocalSessionIndexDiagnostics();
+    diagnostics.desktopThreadCount = desktopThreads.length;
+    diagnostics.localThreadCount = localSessionThreads.length;
+    diagnostics.scannedFiles = Number(localDiagnostics.jsonlFiles || 0);
+    diagnostics.visitedFiles = Number(localDiagnostics.visitedFiles || 0);
+    diagnostics.jsonlFiles = Number(localDiagnostics.jsonlFiles || 0);
+    diagnostics.metaCacheHits = Number(localDiagnostics.metaCacheHits || 0);
+    diagnostics.metaCacheMisses = Number(localDiagnostics.metaCacheMisses || 0);
+    diagnostics.metaCacheSize = Number(localDiagnostics.metaCacheSize || 0);
+    const mergedDesktopThreads = mergeDesktopThreadLists(desktopThreads, localSessionThreads);
+    const sessionIndex = await buildSessionIndex({
+      config,
+      workspaceState,
+      mobileSessionIndex,
+      hiddenSessionIds,
+      desktopThreads: mergedDesktopThreads,
+      spawnEdges,
+      includeMissingSubagentThreads: INCLUDE_MISSING_SUBAGENT_THREADS,
+      readDesktopThread,
+      readRolloutContextState
+    });
+
+    cache = {
+      syncedAt: new Date().toISOString(),
+      config,
+      ...sessionIndex
+    };
+    diagnostics.finalSessionCount = sessionIndex.sessionById.size;
+    diagnostics.projectCount = sessionIndex.projects.length;
+    diagnostics.sessionCount = sessionIndex.sessionById.size;
+
+    return getCacheSnapshot();
+  } catch (error) {
+    diagnostics.error = error?.message || 'Unknown sync error';
+    throw error;
+  } finally {
+    diagnostics.completedAt = new Date().toISOString();
+    diagnostics.durationMs = Date.now() - startedMs;
+    lastSyncDiagnostics = { ...diagnostics };
+  }
 }
 
 export function getCacheSnapshot() {
@@ -148,6 +209,23 @@ export function getCacheSnapshot() {
     config: cache.config,
     projects: cache.projects.map(toPublicProject)
   };
+}
+
+export function getCacheDiagnostics() {
+  const sessionsByProject = {};
+  for (const [projectId, sessions] of cache.sessionsByProject.entries()) {
+    sessionsByProject[projectId] = Array.isArray(sessions) ? sessions.length : 0;
+  }
+  return {
+    syncedAt: cache.syncedAt,
+    projectCount: cache.projects.length,
+    sessionCount: cache.sessionById.size,
+    sessionsByProject
+  };
+}
+
+export function getLastSyncDiagnostics() {
+  return { ...lastSyncDiagnostics };
 }
 
 export function listProjects() {

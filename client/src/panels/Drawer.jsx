@@ -73,6 +73,29 @@ function formatRelativeShort(value) {
   return formatTime(value);
 }
 
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return '--';
+  }
+  if (bytes < 1024) {
+    return `${Math.round(bytes)} B`;
+  }
+  const units = ['KB', 'MB', 'GB'];
+  let size = bytes / 1024;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size >= 100 ? Math.round(size) : size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function formatCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) ? String(count) : '--';
+}
+
 export function Drawer({
   open,
   onClose,
@@ -105,6 +128,9 @@ export function Drawer({
   const [quotaError, setQuotaError] = useState('');
   const [quotaNotice, setQuotaNotice] = useState('');
   const [quotaAccounts, setQuotaAccounts] = useState([]);
+  const [memoryDiagnostics, setMemoryDiagnostics] = useState(null);
+  const [memoryDiagnosticsLoading, setMemoryDiagnosticsLoading] = useState(false);
+  const [memoryDiagnosticsError, setMemoryDiagnosticsError] = useState('');
   const [drawerQuery, setDrawerQuery] = useState('');
   const [threadActionMenu, setThreadActionMenu] = useState(null);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
@@ -219,7 +245,50 @@ export function Drawer({
     setQuotaExpanded((current) => !current);
   }
 
+  async function refreshMemoryDiagnostics(event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (memoryDiagnosticsLoading) {
+      return;
+    }
+    setMemoryDiagnosticsLoading(true);
+    setMemoryDiagnosticsError('');
+    const cacheBust = `t=${Date.now()}`;
+    const noStoreOptions = {
+      cache: 'no-store',
+      headers: { 'cache-control': 'no-cache' }
+    };
+    try {
+      const result = await apiFetch(`/api/diagnostics/memory?${cacheBust}`, noStoreOptions);
+      setMemoryDiagnostics(result);
+    } catch (error) {
+      if (error.status === 404) {
+        try {
+          const status = await apiFetch(`/api/status?diagnostics=memory&${cacheBust}`, noStoreOptions);
+          if (status?.memoryDiagnostics) {
+            setMemoryDiagnostics(status.memoryDiagnostics);
+            setMemoryDiagnosticsError('');
+            return;
+          }
+        } catch {
+          // Keep the original diagnostics endpoint error below.
+        }
+      }
+      setMemoryDiagnosticsError(
+        error.status === 404
+          ? `服务端还没有加载内存诊断接口。当前入口：${window.location.origin}`
+          : (error.message || '诊断读取失败')
+      );
+    } finally {
+      setMemoryDiagnosticsLoading(false);
+    }
+  }
+
   if (drawerView === 'settings') {
+    const memory = memoryDiagnostics?.process?.memory || {};
+    const cache = memoryDiagnostics?.cache || {};
+    const sync = memoryDiagnostics?.sync || {};
+    const processes = memoryDiagnostics?.processes || {};
     return (
       <>
         <div className={`drawer-backdrop ${open ? 'is-open' : ''}`} onClick={onClose} />
@@ -263,6 +332,42 @@ export function Drawer({
                     跟随系统
                   </button>
                 </div>
+              </div>
+            </section>
+            <section className="settings-group">
+              <div className="drawer-heading">内存诊断</div>
+              <div className="memory-diagnostics">
+                <div className="memory-diagnostics-header">
+                  <span>服务端运行状态</span>
+                  <button
+                    type="button"
+                    className="memory-diagnostics-refresh"
+                    onClick={refreshMemoryDiagnostics}
+                    disabled={memoryDiagnosticsLoading}
+                  >
+                    <RefreshCw size={14} className={memoryDiagnosticsLoading ? 'is-spinning' : ''} />
+                    刷新诊断
+                  </button>
+                </div>
+                {memoryDiagnosticsError ? (
+                  <div className="memory-diagnostics-error">{memoryDiagnosticsError}</div>
+                ) : null}
+                {memoryDiagnostics ? (
+                  <div className="memory-diagnostics-grid">
+                    <span>Node RSS</span>
+                    <strong>{formatBytes(memory.rss)}</strong>
+                    <span>Heap used</span>
+                    <strong>{formatBytes(memory.heapUsed)}</strong>
+                    <span>Session cache</span>
+                    <strong>{formatCount(cache.sessionCount)}</strong>
+                    <span>JSONL 扫描</span>
+                    <strong>{formatCount(sync.scannedFiles ?? sync.jsonlFiles)}</strong>
+                    <span>子进程</span>
+                    <strong>{formatCount(processes.count)}</strong>
+                  </div>
+                ) : (
+                  <p className="memory-diagnostics-empty">点击刷新查看当前服务端内存、缓存和子进程规模。</p>
+                )}
               </div>
             </section>
           </div>

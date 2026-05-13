@@ -7,7 +7,8 @@ import {
   listenerPidsForPort,
   pidFilePath,
   pidIsAlive,
-  pidRecordIdentifiesListener
+  pidRecordIdentifiesListener,
+  portRespondsAsCodexMobile
 } from './codexmobile-service.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -47,7 +48,7 @@ function commandMatches(pid, { allowLegacy = true } = {}) {
   });
 }
 
-function candidatePids() {
+async function candidatePids() {
   const candidates = new Map();
   const record = readPidRecord();
   const listenerPids = listenerPidsForPort(port);
@@ -67,6 +68,12 @@ function candidatePids() {
   for (const pid of listenerPids) {
     if (commandMatches(pid, { allowLegacy: true })) {
       candidates.set(Number(pid), candidates.get(Number(pid)) || 'port-scan');
+    }
+  }
+
+  if (!candidates.size && listenerPids.length && await portRespondsAsCodexMobile(port)) {
+    for (const pid of listenerPids) {
+      candidates.set(Number(pid), 'status-probe');
     }
   }
   return candidates;
@@ -98,7 +105,7 @@ async function stopPids(pids) {
   return forceStopped;
 }
 
-const candidates = candidatePids();
+const candidates = await candidatePids();
 const pids = [...candidates.keys()];
 
 if (!pids.length) {

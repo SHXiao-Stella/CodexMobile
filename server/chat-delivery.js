@@ -110,6 +110,37 @@ async function syncDesktopFollowerCollaborationMode({
   await setDesktopFollowerCollaborationMode(selectedSessionId, collaborationMode);
 }
 
+function desktopFollowerSettingsKey(model, reasoningEffort) {
+  return JSON.stringify({
+    model: model || null,
+    reasoningEffort: reasoningEffort || null
+  });
+}
+
+async function syncDesktopFollowerModelAndReasoning({
+  selectedSessionId,
+  model,
+  reasoningEffort,
+  setDesktopFollowerModelAndReasoning,
+  desktopFollowerSettingsCache
+}) {
+  if (!setDesktopFollowerModelAndReasoning) {
+    return;
+  }
+  const normalizedModel = model || null;
+  const normalizedReasoningEffort = reasoningEffort || null;
+  if (desktopFollowerSettingsCache) {
+    const key = desktopFollowerSettingsKey(normalizedModel, normalizedReasoningEffort);
+    if (desktopFollowerSettingsCache.get(selectedSessionId) === key) {
+      return;
+    }
+    await setDesktopFollowerModelAndReasoning(selectedSessionId, normalizedModel, normalizedReasoningEffort);
+    desktopFollowerSettingsCache.set(selectedSessionId, key);
+    return;
+  }
+  await setDesktopFollowerModelAndReasoning(selectedSessionId, normalizedModel, normalizedReasoningEffort);
+}
+
 function sandboxPolicyForDesktopPermissionMode(permissionMode) {
   if (permissionMode === 'bypassPermissions') {
     return { type: 'dangerFullAccess' };
@@ -143,11 +174,13 @@ export async function sendViaDesktopIpc({
   rememberTurn,
   broadcast,
   setDesktopFollowerModelAndReasoning,
+  desktopFollowerSettingsCache = null,
   setDesktopFollowerCollaborationMode,
   steerDesktopFollowerTurn,
   startDesktopFollowerTurn,
   interruptDesktopFollowerTurn,
   requestDesktopThreadSnapshotRefresh = defaultRequestDesktopThreadSnapshotRefresh,
+  refreshDesktopSnapshotAfterSend = false,
   openDesktopThread = defaultOpenCodexDesktopThread,
   openDesktopThreadDelayMs = 900,
   desktopOwnerRetryDelays = [],
@@ -181,9 +214,13 @@ export async function sendViaDesktopIpc({
 
   async function attemptDesktopFollowerTurn() {
     if (sendMode === 'steer') {
-      if (setDesktopFollowerModelAndReasoning) {
-        await setDesktopFollowerModelAndReasoning(selectedSessionId, model || null, reasoningEffort || null);
-      }
+      await syncDesktopFollowerModelAndReasoning({
+        selectedSessionId,
+        model,
+        reasoningEffort,
+        setDesktopFollowerModelAndReasoning,
+        desktopFollowerSettingsCache
+      });
       await syncDesktopFollowerCollaborationMode({
         selectedSessionId,
         collaborationMode,
@@ -206,9 +243,13 @@ export async function sendViaDesktopIpc({
       if (sendMode === 'interrupt') {
         await interruptDesktopFollowerTurn(selectedSessionId);
       }
-      if (setDesktopFollowerModelAndReasoning) {
-        await setDesktopFollowerModelAndReasoning(selectedSessionId, model || null, reasoningEffort || null);
-      }
+      await syncDesktopFollowerModelAndReasoning({
+        selectedSessionId,
+        model,
+        reasoningEffort,
+        setDesktopFollowerModelAndReasoning,
+        desktopFollowerSettingsCache
+      });
       await syncDesktopFollowerCollaborationMode({
         selectedSessionId,
         collaborationMode,
@@ -278,7 +319,7 @@ export async function sendViaDesktopIpc({
     throw error;
   }
 
-  if (requestDesktopThreadSnapshotRefresh) {
+  if (refreshDesktopSnapshotAfterSend && requestDesktopThreadSnapshotRefresh) {
     try {
       const refresh = await requestDesktopThreadSnapshotRefresh(selectedSessionId);
       if (refresh?.sent === false) {

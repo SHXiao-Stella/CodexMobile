@@ -75,6 +75,7 @@ export function createChatService({
     rememberTurn,
     broadcast
   });
+  const desktopFollowerSettingsCache = new Map();
 
   function sessionHasActiveWork(sessionId) {
     return (
@@ -85,6 +86,22 @@ export function createChatService({
       ]) ||
       desktopTurnMonitor.hasActiveWork(sessionId)
     );
+  }
+
+  function getDiagnostics() {
+    const localRuns = typeof getActiveRuns === 'function' ? getActiveRuns() : [];
+    const imageRuns = chatImage.getActiveImageRuns();
+    const desktopRuns = desktopTurnMonitor.getActiveRuns();
+    return {
+      queues: chatQueue.getDiagnostics(),
+      runs: {
+        activeLocalRuns: Array.isArray(localRuns) ? localRuns.length : 0,
+        activeDesktopRuns: Array.isArray(desktopRuns) ? desktopRuns.length : 0,
+        activeImageRuns: Array.isArray(imageRuns) ? imageRuns.length : 0,
+        ...desktopTurnMonitor.getDiagnostics()
+      },
+      userInput: pendingUserInputs.getDiagnostics()
+    };
   }
 
   function activeLocalRunForAbort({ turnId = '', sessionId = '', previousSessionId = '' } = {}) {
@@ -369,6 +386,7 @@ export function createChatService({
             rememberTurn,
             broadcast,
             setDesktopFollowerModelAndReasoning,
+            desktopFollowerSettingsCache,
             setDesktopFollowerCollaborationMode,
             steerDesktopFollowerTurn,
             startDesktopFollowerTurn,
@@ -645,6 +663,7 @@ export function createChatService({
   return {
     abortChat,
     getActiveDesktopIpcRuns: desktopTurnMonitor.getActiveRuns,
+    getDiagnostics,
     getActiveImageRuns: chatImage.getActiveImageRuns,
     getTurn(turnId) {
       return chatQueue.getTurn(turnId);

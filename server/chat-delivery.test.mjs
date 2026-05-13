@@ -32,10 +32,24 @@ function baseDesktopIpcSend(overrides = {}) {
   };
 }
 
-test('desktop ipc send broadcasts a desktop thread refresh after accepted start', async () => {
+test('desktop ipc send does not request a desktop thread refresh by default', async () => {
   const refreshes = [];
 
   await sendViaDesktopIpc(baseDesktopIpcSend({
+    requestDesktopThreadSnapshotRefresh: async (conversationId) => {
+      refreshes.push(conversationId);
+      return { sent: true };
+    }
+  }));
+
+  assert.deepEqual(refreshes, []);
+});
+
+test('desktop ipc can request a desktop thread refresh after accepted send when enabled', async () => {
+  const refreshes = [];
+
+  await sendViaDesktopIpc(baseDesktopIpcSend({
+    refreshDesktopSnapshotAfterSend: true,
     requestDesktopThreadSnapshotRefresh: async (conversationId) => {
       refreshes.push(conversationId);
       return { sent: true };
@@ -45,18 +59,46 @@ test('desktop ipc send broadcasts a desktop thread refresh after accepted start'
   assert.deepEqual(refreshes, ['thread-1']);
 });
 
-test('desktop ipc steer broadcasts a desktop thread refresh after accepted steer', async () => {
-  const refreshes = [];
+test('desktop ipc skips repeated model and reasoning sync when settings are unchanged', async () => {
+  const settingsCache = new Map();
+  const syncs = [];
 
-  await sendViaDesktopIpc(baseDesktopIpcSend({
-    sendMode: 'steer',
-    requestDesktopThreadSnapshotRefresh: async (conversationId) => {
-      refreshes.push(conversationId);
-      return { sent: true };
+  const base = {
+    desktopFollowerSettingsCache: settingsCache,
+    setDesktopFollowerModelAndReasoning: async (conversationId, model, reasoningEffort) => {
+      syncs.push({ conversationId, model, reasoningEffort });
     }
+  };
+
+  await sendViaDesktopIpc(baseDesktopIpcSend(base));
+  await sendViaDesktopIpc(baseDesktopIpcSend(base));
+
+  assert.deepEqual(syncs, [
+    { conversationId: 'thread-1', model: 'gpt-5.5', reasoningEffort: 'high' }
+  ]);
+});
+
+test('desktop ipc syncs model and reasoning again when settings change', async () => {
+  const settingsCache = new Map();
+  const syncs = [];
+
+  const base = {
+    desktopFollowerSettingsCache: settingsCache,
+    setDesktopFollowerModelAndReasoning: async (conversationId, model, reasoningEffort) => {
+      syncs.push({ conversationId, model, reasoningEffort });
+    }
+  };
+
+  await sendViaDesktopIpc(baseDesktopIpcSend(base));
+  await sendViaDesktopIpc(baseDesktopIpcSend({
+    ...base,
+    reasoningEffort: 'xhigh'
   }));
 
-  assert.deepEqual(refreshes, ['thread-1']);
+  assert.deepEqual(syncs, [
+    { conversationId: 'thread-1', model: 'gpt-5.5', reasoningEffort: 'high' },
+    { conversationId: 'thread-1', model: 'gpt-5.5', reasoningEffort: 'xhigh' }
+  ]);
 });
 
 test('desktop ipc default permission sends a complete workspaceWrite sandbox policy', async () => {

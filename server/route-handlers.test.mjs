@@ -137,6 +137,34 @@ test('file route handler searches project files and preserves project not found 
   assert.deepEqual(JSON.parse(missingRes.body), { error: 'Project not found' });
 });
 
+test('file route handler schedules upload cleanup after accepting an upload', async () => {
+  const cleanups = [];
+  const handler = createFileRouteHandler({
+    getProject: () => null,
+    staticService: {
+      async sendLocalImage() {
+        throw new Error('unexpected');
+      }
+    },
+    saveUpload: async () => ({ name: 'image.png', size: 10, kind: 'image' }),
+    cleanupUploadCache: async ({ uploadRoot }) => {
+      cleanups.push(uploadRoot);
+      return { deletedFiles: 1, keptFiles: 0 };
+    },
+    uploadRoot: '/tmp/uploads',
+    maxUploadBytes: 100,
+    uploadCleanupIntervalMs: 0
+  });
+
+  const res = createResponse();
+  assert.equal(await handler(createRequest('POST'), res, new URL('http://local/api/uploads')), true);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(JSON.parse(res.body), { upload: { name: 'image.png', size: 10, kind: 'image' } });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(cleanups, ['/tmp/uploads']);
+});
+
 test('file route handler accepts local file URLs with source filename path segment', async () => {
   const calls = [];
   const handler = createFileRouteHandler({

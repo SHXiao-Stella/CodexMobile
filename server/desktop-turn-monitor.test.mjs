@@ -22,11 +22,38 @@ function createManualTimers() {
         await timer.fn();
       }
     },
+    delays() {
+      return [...timers.values()].map((timer) => timer.delay);
+    },
     count() {
       return timers.size;
     }
   };
 }
+
+test('desktop turn monitor delays the first desktop read by default', () => {
+  const timers = createManualTimers();
+  const monitor = createDesktopTurnMonitor({
+    readSessionMessages: async () => ({ messages: [] }),
+    refreshCodexCache: async () => ({ syncedAt: 'sync-1', projects: [] }),
+    rememberTurn: () => null,
+    broadcast: () => null,
+    setTimer: timers.setTimer,
+    clearTimer: timers.clearTimer
+  });
+
+  monitor.startRun({
+    projectId: 'project-1',
+    sessionId: 'thread-1',
+    previousSessionId: 'thread-1',
+    turnId: 'desktop-turn-1',
+    clientTurnId: 'client-turn-1',
+    userMessage: 'hello',
+    startedAt: '2026-05-08T08:01:00.000Z'
+  });
+
+  assert.deepEqual(timers.delays(), [2500]);
+});
 
 test('desktop turn monitor broadcasts completion after assistant appears after the mobile user message', async () => {
   const timers = createManualTimers();
@@ -137,6 +164,10 @@ test('desktop turn monitor keeps running when desktop thread has not caught up y
   await timers.tick();
 
   assert.equal(monitor.hasActiveWork('thread-1'), true);
+  assert.deepEqual(monitor.getDiagnostics(), {
+    activeRunCount: 1,
+    keyCount: 3
+  });
   assert.deepEqual(monitor.getActiveRuns(), [{
     source: 'desktop-ipc',
     projectId: 'project-1',

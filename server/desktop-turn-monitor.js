@@ -40,7 +40,7 @@ export function createDesktopTurnMonitor({
   now = () => new Date().toISOString(),
   setTimer = setTimeout,
   clearTimer = clearTimeout,
-  pollDelays = [700, 1000, 1500, 2500, 4000, 6500, 10000, 15000, 22000, 30000],
+  pollDelays = [2500, 4000, 6500, 10000, 15000, 22000, 30000],
   maxPolls = 80,
   logger = console
 } = {}) {
@@ -282,9 +282,17 @@ export function createDesktopTurnMonitor({
     return Boolean(id && runsByKey.has(id));
   }
 
+  function getDiagnostics() {
+    return {
+      activeRunCount: [...activeRuns].filter((run) => run.status === 'running').length,
+      keyCount: runsByKey.size
+    };
+  }
+
   return {
     abortRun,
     getActiveRuns,
+    getDiagnostics,
     getRun,
     hasActiveWork,
     startRun

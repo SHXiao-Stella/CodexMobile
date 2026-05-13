@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  clearLocalSessionIndexCache,
+  getLocalSessionIndexDiagnostics,
   mergeDesktopThreadLists,
   readLocalSessionThreads
 } from './local-session-index.js';
@@ -43,6 +45,7 @@ async function writeRollout(root, { id, cwd, timestamp = '2026-05-10T08:00:00.00
 }
 
 test('readLocalSessionThreads restores desktop sessions from local jsonl files', async () => {
+  clearLocalSessionIndexCache();
   await withTempDir(async (dir) => {
     const id = '019e1173-28f3-7d21-a1b9-9d72b3362714';
     const cwd = path.join(dir, 'ProjectA');
@@ -66,6 +69,41 @@ test('readLocalSessionThreads restores desktop sessions from local jsonl files',
     assert.equal(threads[0].source, 'exec');
     assert.equal(threads[0].modelProvider, 'openai');
     assert.equal(threads[0].updatedAt, Date.parse('2026-05-10T09:00:00.000Z') / 1000);
+
+    const diagnostics = getLocalSessionIndexDiagnostics();
+    assert.equal(diagnostics.returnedThreads, 1);
+    assert.equal(diagnostics.jsonlFiles, 1);
+    assert.equal(diagnostics.visitedFiles >= 1, true);
+    assert.equal(Number.isFinite(diagnostics.durationMs), true);
+  });
+});
+
+test('readLocalSessionThreads reuses cached jsonl metadata until file mtime or size changes', async () => {
+  clearLocalSessionIndexCache();
+  await withTempDir(async (dir) => {
+    const id = '019e1173-28f3-7d21-a1b9-9d72b3362714';
+    const cwd = path.join(dir, 'ProjectA');
+    await writeRollout(dir, { id, cwd });
+    const indexPath = path.join(dir, 'session_index.jsonl');
+
+    const first = await readLocalSessionThreads({
+      sessionIndexPath: indexPath,
+      sessionsDir: path.join(dir, 'sessions')
+    });
+    const firstDiagnostics = getLocalSessionIndexDiagnostics();
+    assert.equal(first.length, 1);
+    assert.equal(firstDiagnostics.metaCacheHits, 0);
+    assert.equal(firstDiagnostics.metaCacheMisses, 1);
+
+    const second = await readLocalSessionThreads({
+      sessionIndexPath: indexPath,
+      sessionsDir: path.join(dir, 'sessions')
+    });
+    const secondDiagnostics = getLocalSessionIndexDiagnostics();
+    assert.equal(second.length, 1);
+    assert.equal(secondDiagnostics.metaCacheHits, 1);
+    assert.equal(secondDiagnostics.metaCacheMisses, 0);
+    assert.equal(secondDiagnostics.metaCacheSize, 1);
   });
 });
 

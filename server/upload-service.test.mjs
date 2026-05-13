@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import {
+  cleanupUploadCache,
   normalizeFileMentions,
   normalizeAttachments,
   parseMultipartFile,
@@ -8,6 +12,15 @@ import {
   withFileMentionReferences,
   withImageAttachmentPreviews
 } from './upload-service.js';
+
+async function withTempDir(fn) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-uploads-'));
+  try {
+    await fn(dir);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
 
 function multipartBody({ boundary, fieldName = 'file', fileName, mimeType, data }) {
   return Buffer.concat([
@@ -71,4 +84,30 @@ test('file mention references dedupe paths and append to the model message', () 
     withFileMentionReferences('看这两个文件', mentions),
     '看这两个文件\n\n引用文件路径:\n- 文件: App.jsx (/repo/client/src/App.jsx)\n- 文件: index.js (/repo/server/index.js)'
   );
+});
+
+test('cleanupUploadCache deletes expired uploaded files and keeps recent files', async () => {
+  await withTempDir(async (dir) => {
+    const oldDir = path.join(dir, '2026-05-01');
+    const recentDir = path.join(dir, '2026-05-13');
+    await fs.mkdir(oldDir, { recursive: true });
+    await fs.mkdir(recentDir, { recursive: true });
+    const oldFile = path.join(oldDir, 'old-image.png');
+    const recentFile = path.join(recentDir, 'recent-image.png');
+    await fs.writeFile(oldFile, 'old');
+    await fs.writeFile(recentFile, 'recent');
+    await fs.utimes(oldFile, new Date('2026-05-01T12:00:00.000Z'), new Date('2026-05-01T12:00:00.000Z'));
+    await fs.utimes(recentFile, new Date('2026-05-13T12:00:00.000Z'), new Date('2026-05-13T12:00:00.000Z'));
+
+    const result = await cleanupUploadCache({
+      uploadRoot: dir,
+      now: () => new Date('2026-05-13T12:00:00.000Z'),
+      maxAgeMs: 7 * 24 * 60 * 60 * 1000
+    });
+
+    assert.equal(result.deletedFiles, 1);
+    assert.equal(result.keptFiles, 1);
+    await assert.rejects(() => fs.stat(oldFile), /ENOENT/);
+    assert.equal((await fs.readFile(recentFile, 'utf8')), 'recent');
+  });
 });

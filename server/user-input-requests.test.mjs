@@ -83,6 +83,10 @@ test('PendingUserInputRequests stores, answers, and clears requests', async () =
   assert.equal(key, userInputRequestKey(request));
   assert.equal(pending.list().length, 1);
   assert.equal(pending.list()[0].createdAt, 123);
+  assert.deepEqual(pending.getDiagnostics(), {
+    pendingCount: 1,
+    pendingByThread: { 'thread-1': 1 }
+  });
 
   const result = pending.answer({
     threadId: 'thread-1',

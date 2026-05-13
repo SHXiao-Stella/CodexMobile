@@ -227,8 +227,27 @@ export function createChatQueue({ maxRecentTurns = DEFAULT_MAX_RECENT_TURNS } = 
     return false;
   }
 
+  function getDiagnostics() {
+    let queuedJobCount = 0;
+    let runningQueueCount = 0;
+    for (const state of conversationQueues.values()) {
+      queuedJobCount += state.jobs.length;
+      if (state.running) {
+        runningQueueCount += 1;
+      }
+    }
+    return {
+      recentTurnCount: recentTurns.size,
+      conversationQueueCount: conversationQueues.size,
+      runningQueueCount,
+      queuedJobCount,
+      sessionAliasCount: sessionQueueKeys.size
+    };
+  }
+
   return {
     enqueueJob,
+    getDiagnostics,
     getConversationQueue,
     getTurn(turnId) {
       return recentTurns.get(turnId) || null;
