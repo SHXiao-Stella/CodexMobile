@@ -1098,15 +1098,19 @@
 
 [data-theme="dark"] .message-bubble {
   color: var(--text);
-  background: rgba(10, 10, 11, 0.78);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(17, 18, 22, 0.82);
+  border-color: rgba(255, 255, 255, 0.11);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.42);
 }
 
 [data-theme="dark"] .message-row.is-user .message-bubble {
-  color: #f4f4f5;
-  background: rgba(24, 24, 26, 0.88);
-  border-color: rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+  background:
+    linear-gradient(135deg, rgba(52, 64, 85, 0.98), rgba(38, 49, 66, 0.98));
+  border-color: rgba(148, 163, 184, 0.28);
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 [data-theme="dark"] .message-guide-label {
@@ -1152,8 +1156,8 @@
 [data-theme="dark"] .plan-card,
 [data-theme="dark"] .plan-request-panel {
   color: #f4f4f5;
-  background: rgba(31, 31, 33, 0.9);
-  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(24, 25, 29, 0.92);
+  border-color: rgba(255, 255, 255, 0.11);
   box-shadow: none;
 }
 
@@ -1187,8 +1191,8 @@
 
 [data-theme="dark"] .plan-request-option {
   color: #f4f4f5;
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.075);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 [data-theme="dark"] .plan-request-option.is-primary:not(:disabled):hover,
@@ -1246,8 +1250,8 @@
 }
 
 [data-theme="dark"] .activity-timeline {
-  background: rgba(8, 8, 9, 0.72);
-  border-color: rgba(255, 255, 255, 0.11);
+  background: rgba(17, 18, 22, 0.76);
+  border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
 }
 
@@ -1279,7 +1283,7 @@
 
 [data-theme="dark"] .activity-shell {
   color: #dedee3;
-  background: #101012;
+  background: #111216;
 }
 
 [data-theme="dark"] .activity-shell-head,
@@ -1302,13 +1306,13 @@
 
 [data-theme="dark"] .activity-file-summary {
   color: #ededf0;
-  background: #050506;
-  border-color: #242428;
+  background: #111216;
+  border-color: #303036;
 }
 
 [data-theme="dark"] .activity-file-summary-head {
   color: #ededf0;
-  border-bottom-color: #242428;
+  border-bottom-color: #303036;
 }
 
 [data-theme="dark"] .activity-file-item {
@@ -1316,16 +1320,16 @@
 }
 
 [data-theme="dark"] .activity-file-item + .activity-file-item {
-  border-top-color: #242428;
+  border-top-color: #303036;
 }
 
 [data-theme="dark"] .activity-diff-shell,
 [data-theme="dark"] .activity-diff-view {
-  background: #050506;
+  background: #111216;
 }
 
 [data-theme="dark"] .activity-diff-shell {
-  border-top-color: #242428;
+  border-top-color: #303036;
 }
 
 [data-theme="dark"] .activity-diff-num {
@@ -1411,17 +1415,17 @@
 
 [data-theme="dark"] .message-content pre {
   color: #ededf0;
-  background: #050506;
+  background: #111216;
 }
 
 [data-theme="dark"] .markdown-code-block {
-  border-color: #242428;
-  background: #050506;
+  border-color: #303036;
+  background: #111216;
 }
 
 [data-theme="dark"] .markdown-code-head {
   color: #a1a1aa;
-  border-bottom-color: #202024;
+  border-bottom-color: #303036;
 }
 
 [data-theme="dark"] .markdown-code-head button {
@@ -1445,12 +1449,12 @@
 }
 
 [data-theme="dark"] .markdown-table-wrap {
-  border-color: #242428;
+  border-color: #303036;
 }
 
 [data-theme="dark"] .message-content th,
 [data-theme="dark"] .message-content td {
-  border-bottom-color: #242428;
+  border-bottom-color: #303036;
 }
 
 [data-theme="dark"] .message-content th {
@@ -1458,7 +1462,7 @@
 }
 
 [data-theme="dark"] .message-image-link {
-  background: #101012;
+  background: #111216;
 }
 
 [data-theme="dark"] .message-image-link.is-failed {
@@ -1473,11 +1477,11 @@
 
 [data-theme="dark"] .lightbox-actions button {
   color: #ffb4ae;
-  background: #101012;
+  background: #111216;
 }
 
 [data-theme="dark"] .lightbox-zoom-controls {
-  background: rgba(10, 10, 11, 0.76);
+  background: rgba(17, 18, 22, 0.78);
 }
 
 [data-theme="dark"] .message-bubble time {
@@ -1485,7 +1489,7 @@
 }
 
 [data-theme="dark"] .message-row.is-user .message-bubble time {
-  color: rgba(212, 212, 216, 0.66);
+  color: rgba(226, 232, 240, 0.72);
 }
 
 [data-theme="dark"] .scroll-latest-button {
@@ -1494,7 +1498,7 @@
 }
 
 [data-theme="dark"] .composer-wrap {
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.92) 28%);
+  background: linear-gradient(180deg, rgba(10, 10, 12, 0), rgba(10, 10, 12, 0.92) 28%);
 }
 
 .file-preview-page {

@@ -17,6 +17,7 @@ const REQUEST_TIMEOUT_MS = Number(process.env.CODEXMOBILE_QUOTA_REQUEST_TIMEOUT_
 const MANAGEMENT_TIMEOUT_MS = Number(process.env.CODEXMOBILE_QUOTA_MANAGEMENT_TIMEOUT_MS || 2_500);
 const STALE_QUOTA_TTL_MS = Number(process.env.CODEXMOBILE_QUOTA_STALE_TTL_MS || 30 * 60_000);
 const FIXED_PAIRING_CODE_FILE = path.join(process.cwd(), '.codexmobile', 'state', 'pairing-code.txt');
+const CLI_LOGIN_REQUIRED_MESSAGE = '额度查询需要 Codex CLI 登录；Codex Desktop 登录态暂不能用于额度查询。';
 let lastSuccessfulQuota = null;
 let cachedQuotaProxyUrl = null;
 let quotaProxyResolved = false;
@@ -422,7 +423,7 @@ function safeErrorMessage(error) {
   const status = error?.statusCode || error?.status;
   if (status) {
     if (status === 401 || status === 403) {
-      return '凭证已过期，请重新登录 Codex';
+      return CLI_LOGIN_REQUIRED_MESSAGE;
     }
     if (status === 429) {
       return '额度接口限流，稍后重试';
@@ -730,7 +731,7 @@ async function quotaForFile(authDir, fileName) {
     return { ...account, status: 'disabled', error: '已停用' };
   }
   if (!credential.access_token || !credential.account_id) {
-    return { ...account, status: 'failed', error: '凭证缺少额度查询信息' };
+    return { ...account, status: 'failed', error: CLI_LOGIN_REQUIRED_MESSAGE };
   }
 
   try {
@@ -780,7 +781,7 @@ async function quotaForCodexAuth() {
   const account = baseAccountFromCodexAuth(authPath, credential);
 
   if (!credential.access_token || !credential.account_id) {
-    return { ...account, status: 'failed', error: 'Codex 凭证缺少额度查询信息' };
+    return { ...account, status: 'failed', error: CLI_LOGIN_REQUIRED_MESSAGE };
   }
 
   try {

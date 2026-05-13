@@ -13,7 +13,7 @@ test('quota error messages distinguish common network and auth failures', () => 
   );
   assert.equal(
     quotaTestHooks.safeErrorMessage({ statusCode: 401 }),
-    '凭证已过期，请重新登录 Codex'
+    '额度查询需要 Codex CLI 登录；Codex Desktop 登录态暂不能用于额度查询。'
   );
   assert.equal(
     quotaTestHooks.safeErrorMessage({ statusCode: 429 }),

@@ -21,7 +21,7 @@
   --glass-strong: rgba(255, 255, 255, 0.94);
   --hairline: rgba(23, 24, 27, 0.1);
   --soft-shadow: 0 10px 32px rgba(17, 24, 39, 0.09);
-  --bubble-user: #18181b;
+  --bubble-user: #63766a;
   --bubble-user-text: #ffffff;
   --composer-height: calc(env(safe-area-inset-bottom, 0px) + 118px);
   --keyboard-inset: 0px;
@@ -29,24 +29,24 @@
 
 [data-theme="dark"] {
   color: #f4f4f5;
-  background: #000000;
-  --surface: #000000;
-  --panel: #0a0a0b;
-  --panel-2: #121214;
+  background: #0a0a0c;
+  --surface: #0a0a0c;
+  --panel: #111216;
+  --panel-2: #18191d;
   --text: #f4f4f5;
   --muted: #a1a1aa;
-  --line: #202024;
-  --accent: #9fb7ff;
-  --accent-soft: rgba(159, 183, 255, 0.16);
+  --line: #303036;
+  --accent: #aebfe8;
+  --accent-soft: rgba(174, 191, 232, 0.16);
   --green: #37c58a;
   --danger: #ff6b62;
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.56);
-  --glass: rgba(8, 8, 9, 0.78);
-  --glass-strong: rgba(12, 12, 13, 0.92);
-  --hairline: rgba(255, 255, 255, 0.09);
+  --glass: rgba(17, 18, 22, 0.78);
+  --glass-strong: rgba(24, 25, 29, 0.92);
+  --hairline: rgba(255, 255, 255, 0.11);
   --soft-shadow: 0 12px 34px rgba(0, 0, 0, 0.46);
-  --bubble-user: #f4f4f5;
-  --bubble-user-text: #111113;
+  --bubble-user: #2b3548;
+  --bubble-user-text: #f8fafc;
 }
 
 * {

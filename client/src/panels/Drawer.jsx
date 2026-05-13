@@ -1,4 +1,4 @@
-import { Archive, BarChart3, ChevronDown, ChevronLeft, Folder, Loader2, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Settings, X } from 'lucide-react';
+import { Archive, ChevronDown, ChevronLeft, Folder, Loader2, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Settings, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api.js';
 import { compactPath, formatTime, sessionRunBadgeState, subAgentSubtitle } from '../app/session-utils.js';
@@ -122,7 +122,6 @@ export function Drawer({
 }) {
   const [drawerView, setDrawerView] = useState('main');
   const [subagentExpandedById, setSubagentExpandedById] = useState({});
-  const [quotaExpanded, setQuotaExpanded] = useState(false);
   const [quotaLoading, setQuotaLoading] = useState(false);
   const [quotaLoaded, setQuotaLoaded] = useState(false);
   const [quotaError, setQuotaError] = useState('');
@@ -224,7 +223,6 @@ export function Drawer({
     if (quotaLoading) {
       return;
     }
-    setQuotaExpanded(true);
     setQuotaLoading(true);
     setQuotaError('');
     setQuotaNotice('');
@@ -239,10 +237,6 @@ export function Drawer({
     } finally {
       setQuotaLoading(false);
     }
-  }
-
-  function toggleQuotaPanel() {
-    setQuotaExpanded((current) => !current);
   }
 
   async function refreshMemoryDiagnostics(event) {
@@ -282,6 +276,86 @@ export function Drawer({
     } finally {
       setMemoryDiagnosticsLoading(false);
     }
+  }
+
+  function renderQuotaPanel() {
+    return (
+      <div className="quota-panel">
+        <div className="quota-panel-head">
+          <span>额度查询 · Codex</span>
+          <button
+            type="button"
+            className="quota-refresh"
+            onClick={refreshCodexQuota}
+            disabled={quotaLoading}
+          >
+            {quotaLoading ? <Loader2 className="spin" size={12} /> : null}
+            {quotaLoading ? '刷新中' : '刷新'}
+          </button>
+        </div>
+        {quotaError ? (
+          <button type="button" className="quota-error" onClick={refreshCodexQuota}>
+            {quotaError}
+          </button>
+        ) : null}
+        {!quotaError && quotaNotice ? (
+          <button type="button" className="quota-error" onClick={refreshCodexQuota}>
+            {quotaNotice}，点击刷新
+          </button>
+        ) : null}
+        {!quotaError && quotaAccounts.length ? (
+          quotaAccounts.map((account) => {
+            const windows = Array.isArray(account.windows) ? account.windows : [];
+            const accountStatus = account.status || 'ok';
+            const plan = account.plan || 'Codex';
+            return (
+              <div key={account.id} className={`quota-account is-${accountStatus}`}>
+                <div className="quota-account-head">
+                  <span>{account.label || 'Codex'}</span>
+                  <small>{plan}</small>
+                </div>
+                {accountStatus === 'ok' && windows.length ? (
+                  <div className="quota-window-list">
+                    {windows.map((quotaWindow) => {
+                      const percent = quotaRemainingPercent(quotaWindow);
+                      return (
+                        <div
+                          key={quotaWindow.id}
+                          className={`quota-window ${quotaToneClass(percent)}`}
+                          style={{ '--quota-percent': `${percent ?? 0}%` }}
+                        >
+                          <div className="quota-window-meta">
+                            <span>{quotaWindow.label}</span>
+                            <strong>{formatQuotaPercent(quotaWindow)}</strong>
+                          </div>
+                          <div className="quota-bar">
+                            <span />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="quota-account-message"
+                    onClick={accountStatus === 'failed' ? refreshCodexQuota : undefined}
+                  >
+                    {accountStatus === 'disabled' ? '已停用' : `${account.error || '查询失败'}，点击刷新重试`}
+                  </button>
+                )}
+              </div>
+            );
+          })
+        ) : null}
+        {!quotaLoading && !quotaError && quotaLoaded && !quotaAccounts.length ? (
+          <div className="quota-empty">未检测到 Codex CLI 登录凭证；Codex Desktop 登录态暂不能用于额度查询。</div>
+        ) : null}
+        {!quotaLoading && !quotaError && !quotaLoaded ? (
+          <div className="quota-empty">点击刷新查询额度</div>
+        ) : null}
+      </div>
+    );
   }
 
   if (drawerView === 'settings') {
@@ -369,6 +443,10 @@ export function Drawer({
                   <p className="memory-diagnostics-empty">点击刷新查看当前服务端内存、缓存和子进程规模。</p>
                 )}
               </div>
+            </section>
+            <section className="settings-group">
+              <div className="drawer-heading">额度查询</div>
+              {renderQuotaPanel()}
             </section>
           </div>
         </aside>
@@ -630,84 +708,6 @@ export function Drawer({
           ) : null}
         </div>
 
-        {quotaExpanded ? (
-          <div className="quota-panel">
-            <div className="quota-panel-head">
-              <span>额度查询 · Codex</span>
-              <button
-                type="button"
-                className="quota-refresh"
-                onClick={refreshCodexQuota}
-                disabled={quotaLoading}
-              >
-                {quotaLoading ? <Loader2 className="spin" size={12} /> : null}
-                {quotaLoading ? '刷新中' : '刷新'}
-              </button>
-            </div>
-            {quotaError ? (
-              <button type="button" className="quota-error" onClick={refreshCodexQuota}>
-                {quotaError}
-              </button>
-            ) : null}
-            {!quotaError && quotaNotice ? (
-              <button type="button" className="quota-error" onClick={refreshCodexQuota}>
-                {quotaNotice}，点击刷新
-              </button>
-            ) : null}
-            {!quotaError && quotaAccounts.length ? (
-              quotaAccounts.map((account) => {
-                const windows = Array.isArray(account.windows) ? account.windows : [];
-                const accountStatus = account.status || 'ok';
-                const plan = account.plan || 'Codex';
-                return (
-                  <div key={account.id} className={`quota-account is-${accountStatus}`}>
-                    <div className="quota-account-head">
-                      <span>{account.label || 'Codex'}</span>
-                      <small>{plan}</small>
-                    </div>
-                    {accountStatus === 'ok' && windows.length ? (
-                      <div className="quota-window-list">
-                        {windows.map((quotaWindow) => {
-                          const percent = quotaRemainingPercent(quotaWindow);
-                          return (
-                            <div
-                              key={quotaWindow.id}
-                              className={`quota-window ${quotaToneClass(percent)}`}
-                              style={{ '--quota-percent': `${percent ?? 0}%` }}
-                            >
-                              <div className="quota-window-meta">
-                                <span>{quotaWindow.label}</span>
-                                <strong>{formatQuotaPercent(quotaWindow)}</strong>
-                              </div>
-                              <div className="quota-bar">
-                                <span />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="quota-account-message"
-                        onClick={accountStatus === 'failed' ? refreshCodexQuota : undefined}
-                      >
-                        {accountStatus === 'disabled' ? '已停用' : `${account.error || '查询失败'}，点击刷新重试`}
-                      </button>
-                    )}
-                  </div>
-                );
-              })
-            ) : null}
-            {!quotaLoading && !quotaError && quotaLoaded && !quotaAccounts.length ? (
-              <div className="quota-empty">暂无 Codex 凭证</div>
-            ) : null}
-            {!quotaLoading && !quotaError && !quotaLoaded ? (
-              <div className="quota-empty">点击右上角刷新查询额度</div>
-            ) : null}
-          </div>
-        ) : null}
-
         <footer className="drawer-footer">
           <div className="drawer-footer-actions">
             <button
@@ -726,15 +726,6 @@ export function Drawer({
               aria-label="同步对话"
             >
               {syncing ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-            </button>
-            <button
-              type="button"
-              className={`footer-icon-button ${quotaExpanded ? 'is-active' : ''}`}
-              onClick={toggleQuotaPanel}
-              aria-label="额度查询"
-              aria-expanded={quotaExpanded}
-            >
-              <BarChart3 size={16} />
             </button>
           </div>
           <span className="drawer-footer-status">{statusText}</span>

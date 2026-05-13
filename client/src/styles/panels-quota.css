@@ -265,21 +265,21 @@
   background: #101012;
 }
 
-/* Quota panel: inline above footer, lighter chrome */
+/* Quota panel: settings diagnostics card */
 .quota-panel {
   flex: 0 0 auto;
   display: grid;
   gap: 8px;
-  max-height: min(38svh, 320px);
-  margin: 0 0 8px;
+  max-height: none;
+  margin: 0;
   padding: 12px;
-  border-radius: 12px;
-  background: #f9fafb;
-  overflow: auto;
+  border-radius: 8px;
+  background: #f5f7f4;
+  overflow: visible;
 }
 
 [data-theme="dark"] .quota-panel {
-  background: #080809;
+  background: #18191d;
 }
 
 .quota-panel-head {
@@ -313,15 +313,15 @@
 
 [data-theme="dark"] .quota-panel-head .quota-refresh {
   color: #a1a1aa;
-  background: #121214;
+  background: #111216;
 }
 
 .quota-panel .quota-account {
   background: #ffffff;
-  border-color: #f3f4f6;
+  border-color: #e5e7eb;
 }
 
 [data-theme="dark"] .quota-panel .quota-account {
-  background: #050506;
-  border-color: #202024;
+  background: #111216;
+  border-color: #303036;
 }
