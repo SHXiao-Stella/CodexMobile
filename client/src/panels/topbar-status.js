@@ -18,6 +18,14 @@ function isHeadlessRuntime(runtime) {
   return source === 'headless-local' || source === 'background' || source === 'local';
 }
 
+function hasDesktopThreadSelection(session) {
+  const id = String(session?.id || '').trim();
+  if (!id || id.startsWith('draft-')) {
+    return false;
+  }
+  return !session?.draft;
+}
+
 export function bridgeConnectionLabel(connectionState, desktopBridge, { selectedSession = null, selectedRuntime = null } = {}) {
   if (connectionState !== 'connected') {
     return CONNECTION_STATUS[connectionState] || CONNECTION_STATUS.disconnected;
@@ -45,6 +53,14 @@ export function bridgeConnectionLabel(connectionState, desktopBridge, { selected
     };
   }
 
+  if (desktopBridge && (!desktopBridge.connected || desktopBridge.mode === 'unavailable')) {
+    return {
+      label: '桌面未连接',
+      className: 'is-connected is-disconnected',
+      description: desktopBridge.reason || 'CodexMobile 服务在线，但没有连接到 Codex Desktop。'
+    };
+  }
+
   if (desktopBridge?.mode === 'headless-local') {
     return {
       label: '后台可用',
@@ -54,12 +70,13 @@ export function bridgeConnectionLabel(connectionState, desktopBridge, { selected
   }
 
   if (desktopBridge?.mode === 'desktop-ipc') {
+    const hasThread = hasDesktopThreadSelection(selectedSession);
     return {
-      label: selectedSession?.id ? '线程待确认' : '桌面在线',
+      label: hasThread ? '已连接桌面当前线程' : '桌面已连接，但没有活动线程',
       className: 'is-connected is-ipc-ready',
-      description: selectedSession?.id
-        ? '桌面 IPC 总线在线，但当前线程是否已被桌面接管要在发送时确认；若桌面未打开该线程会转后台执行。'
-        : '桌面 IPC 总线在线；新对话会按当前能力选择桌面或后台路径。'
+      description: hasThread
+        ? '手机消息会发送到 Codex Desktop 当前线程；如果桌面端未接管，会自动打开该线程并重试。'
+        : '桌面 IPC 已连接。请先在电脑端新建或打开线程，然后从手机继续发送。'
     };
   }
 

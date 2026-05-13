@@ -82,6 +82,7 @@ Plan mode 和用户输入卡片部分也参考了 [bingqldx/CodexMobile](https:/
 
 - 这不是公网 SaaS，也不是远程桌面。它是一个暴露在可信私有网络里的本机 Node.js bridge。
 - 当前不能审批原生 Codex Desktop GUI 自己弹出的权限请求。也就是说，如果你直接在电脑上的 Codex Desktop 窗口里发起任务，运行到一半出现桌面端权限审批，手机端不承诺能看到或处理这个审批。
+- 当前不能从手机端直接新建真实的 Codex Desktop GUI 线程；请先在电脑端新建或打开线程，再从手机端继续发送。
 - 手机端用户输入卡片主要覆盖 CodexMobile 自己发起或 app-server 明确广播出来的 request。
 - Desktop IPC 能力取决于当前 Codex Desktop 版本和线程是否有可用 owner。
 - Web Push 必须走 HTTPS。`http://<tailscale-ip>:3321` 可以正常打开网页，但不能保证后台通知。

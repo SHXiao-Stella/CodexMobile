@@ -82,11 +82,13 @@ test('desktop ipc default permission sends a complete workspaceWrite sandbox pol
 test('desktop ipc opens the desktop thread deeplink before retrying a missing owner', async () => {
   const opened = [];
   const sleeps = [];
+  const broadcasts = [];
   let attempts = 0;
   const sessionId = '019da0fa-e201-7a02-bec4-1bbc7d54da04';
 
   const result = await sendViaDesktopIpc(baseDesktopIpcSend({
     selectedSessionId: sessionId,
+    broadcast: (payload) => broadcasts.push(payload),
     startDesktopFollowerTurn: async () => {
       attempts += 1;
       if (attempts === 1) {
@@ -110,4 +112,40 @@ test('desktop ipc opens the desktop thread deeplink before retrying a missing ow
   assert.deepEqual(opened, [sessionId]);
   assert.deepEqual(sleeps, [900]);
   assert.equal(attempts, 2);
+  assert.deepEqual(
+    broadcasts
+      .filter((payload) => payload.type === 'status-update')
+      .map((payload) => payload.label),
+    ['正在打开桌面线程', '正在重试发送到桌面', '已交给桌面端处理']
+  );
+});
+
+test('desktop ipc reports no client found without converting it to a background run', async () => {
+  const broadcasts = [];
+  const sessionId = '019da0fa-e201-7a02-bec4-1bbc7d54da04';
+
+  await assert.rejects(
+    () => sendViaDesktopIpc(baseDesktopIpcSend({
+      selectedSessionId: sessionId,
+      broadcast: (payload) => broadcasts.push(payload),
+      startDesktopFollowerTurn: async () => {
+        const error = new Error('no-client-found');
+        error.statusCode = 409;
+        throw error;
+      },
+      openDesktopThread: async () => ({ opened: true }),
+      requestDesktopThreadSnapshotRefresh: async () => ({ sent: true })
+    })),
+    (error) => {
+      assert.equal(error.code, 'CODEXMOBILE_DESKTOP_THREAD_OWNER_UNAVAILABLE');
+      assert.equal(error.statusCode, 409);
+      assert.match(error.message, /桌面端没有接管这个线程/);
+      return true;
+    }
+  );
+
+  assert.equal(
+    broadcasts.some((payload) => payload.type === 'status-update' && payload.label === '发送失败：no client found'),
+    true
+  );
 });

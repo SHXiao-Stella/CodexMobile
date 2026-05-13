@@ -6,6 +6,7 @@ import { createChatQueue } from './chat-queue.js';
 import {
   assertDesktopBridgeAvailable,
   backgroundFallbackBridge,
+  desktopCreateThreadUnavailableError,
   desktopIpcCanUseBackgroundFallback,
   runQueuedHeadlessChatJob,
   sendViaDesktopIpc
@@ -344,8 +345,8 @@ export function createChatService({
     }
 
     if (bridge?.mode === 'desktop-ipc' && !imagePrompt) {
-      if (!selectedSessionId && desktopIpcCanUseBackgroundFallback(bridge)) {
-        bridge = backgroundFallbackBridge(bridge, '桌面端还不能从手机新建真实桌面线程，已改用后台 Codex 新建。');
+      if (!selectedSessionId) {
+        throw desktopCreateThreadUnavailableError();
       } else {
         try {
           const result = await sendViaDesktopIpc({

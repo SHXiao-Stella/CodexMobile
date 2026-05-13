@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bridgeConnectionLabel } from './panels/topbar-status.js';
 
-test('bridgeConnectionLabel shows idle desktop IPC as pending thread takeover', () => {
+test('bridgeConnectionLabel shows selected desktop IPC thread as connected desktop thread', () => {
   const label = bridgeConnectionLabel('connected', {
     connected: true,
     mode: 'desktop-ipc'
@@ -10,8 +10,20 @@ test('bridgeConnectionLabel shows idle desktop IPC as pending thread takeover', 
     selectedSession: { id: 'thread-1' }
   });
 
-  assert.equal(label.label, '线程待确认');
-  assert.match(label.description, /是否已被桌面接管要在发送时确认/);
+  assert.equal(label.label, '已连接桌面当前线程');
+  assert.match(label.description, /手机消息会发送到 Codex Desktop 当前线程/);
+});
+
+test('bridgeConnectionLabel shows desktop IPC with no active thread', () => {
+  const label = bridgeConnectionLabel('connected', {
+    connected: true,
+    mode: 'desktop-ipc'
+  }, {
+    selectedSession: null
+  });
+
+  assert.equal(label.label, '桌面已连接，但没有活动线程');
+  assert.match(label.description, /请先在电脑端新建或打开线程/);
 });
 
 test('bridgeConnectionLabel distinguishes desktop and background running routes', () => {
@@ -49,7 +61,7 @@ test('bridgeConnectionLabel uses compact background and disconnected labels', ()
   );
 
   assert.equal(
-    bridgeConnectionLabel('disconnected', null).label,
-    '未连接'
+    bridgeConnectionLabel('connected', { connected: false, mode: 'unavailable' }).label,
+    '桌面未连接'
   );
 });

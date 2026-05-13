@@ -20,8 +20,19 @@ function desktopIpcUnavailableError(message = '桌面端 Codex 已连接，但�
   return error;
 }
 
-function desktopCreateThreadUnavailableError() {
-  const error = new Error('当前桌面端 Codex 只开放了接管已有对话，不能从手机直接新建桌面端对话。请先在桌面端新建或打开一个对话，再从手机继续发送。');
+function desktopOwnerUnavailableMessage(error) {
+  const raw = String(error?.message || '').trim();
+  if (!raw || raw === 'no-client-found') {
+    return '桌面端没有接管这个线程，请在 Codex Desktop 打开该线程后重试。';
+  }
+  if (isDesktopFollowerPreflightTimeout(error)) {
+    return '桌面端暂时没有确认这个线程，请在 Codex Desktop 打开该线程后重试。';
+  }
+  return raw;
+}
+
+export function desktopCreateThreadUnavailableError() {
+  const error = new Error('当前桌面端 Codex 只开放了接管已有对话，不能从手机直接新建桌面端对话。请先在电脑端新建或打开一个线程，然后从手机继续发送。');
   error.statusCode = 409;
   error.code = 'CODEXMOBILE_DESKTOP_CREATE_THREAD_UNAVAILABLE';
   return error;
@@ -211,6 +222,20 @@ export async function sendViaDesktopIpc({
   let result;
   const ownerRetryDelays = retryDelays(desktopOwnerRetryDelays);
   let attemptedDesktopOpen = false;
+  const broadcastDesktopStatus = (label, detail = '', status = 'running') => {
+    broadcast?.({
+      type: 'status-update',
+      source: bridge?.mode || 'desktop-ipc',
+      projectId: project.id,
+      sessionId: selectedSessionId,
+      turnId,
+      kind: 'turn',
+      status,
+      label,
+      detail,
+      timestamp: new Date().toISOString()
+    });
+  };
   try {
     for (let attempt = 0; ; attempt += 1) {
       try {
@@ -222,11 +247,13 @@ export async function sendViaDesktopIpc({
         }
         if (!attemptedDesktopOpen && openDesktopThread) {
           attemptedDesktopOpen = true;
+          broadcastDesktopStatus('正在打开桌面线程', '桌面端没有接管这个线程，正在尝试打开 Codex Desktop 线程。');
           const opened = await openDesktopThread(selectedSessionId);
           if (opened?.opened) {
             if (openDesktopThreadDelayMs > 0) {
               await sleep(openDesktopThreadDelayMs);
             }
+            broadcastDesktopStatus('正在重试发送到桌面', 'Codex Desktop 线程已打开，正在重新发送。');
             continue;
           }
         }
@@ -241,7 +268,12 @@ export async function sendViaDesktopIpc({
     }
   } catch (error) {
     if (isDesktopThreadOwnerUnavailable(error)) {
-      throw desktopIpcUnavailableError(error?.message || undefined);
+      const message = desktopOwnerUnavailableMessage(error);
+      const label = String(error?.message || '').trim() === 'no-client-found'
+        ? '发送失败：no client found'
+        : '发送失败：桌面线程未接管';
+      broadcastDesktopStatus(label, message, 'failed');
+      throw desktopIpcUnavailableError(message);
     }
     throw error;
   }

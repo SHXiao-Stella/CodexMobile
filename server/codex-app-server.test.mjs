@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   CodexAppServerClient,
   codexAppServerSpawnOptions,
+  desktopIpcBridgeStatus,
   desktopBridgeStatusForAppServerTransport,
   listDesktopThreads,
   readDesktopThread,
@@ -103,6 +104,19 @@ test('desktop bridge status reports headless fallback without spawning app-serve
   assert.equal(status.capabilities.createThread, true);
   assert.equal(status.capabilities.backgroundCodex, true);
   assert.equal(status.capabilities.read, false);
+});
+
+test('desktop ipc bridge status tells users to create or open threads on the computer', () => {
+  const status = desktopIpcBridgeStatus({
+    connected: true,
+    socketPath: String.raw`\\.\pipe\codex-ipc`
+  }, {
+    checkedAt: '2026-05-13T00:00:00.000Z'
+  });
+
+  assert.equal(status.mode, 'desktop-ipc');
+  assert.equal(status.capabilities.createThread, false);
+  assert.match(status.capabilities.createThreadReason, /请先在电脑端新建或打开线程/);
 });
 
 test('desktop thread listing skips unavailable bridges instead of starting isolated app-server', async () => {

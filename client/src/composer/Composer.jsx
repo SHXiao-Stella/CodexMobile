@@ -93,6 +93,7 @@ export function Composer({
     uploading,
     desktopBridge,
     steerable: runStatus?.steerable !== false,
+    hasSelectedSession: Boolean(selectedSession?.id),
     sessionIsDraft: isDraftSession(selectedSession)
   });
   const stopMode = sendState.mode === 'abort';

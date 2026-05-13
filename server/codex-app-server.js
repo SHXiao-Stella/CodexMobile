@@ -389,6 +389,25 @@ export function desktopBridgeStatusForAppServerTransport(transport = {}, { check
   };
 }
 
+export function desktopIpcBridgeStatus(ipc = {}, { checkedAt = new Date().toISOString() } = {}) {
+  return {
+    strict: true,
+    connected: true,
+    mode: 'desktop-ipc',
+    reason: null,
+    socketPath: ipc.socketPath || null,
+    checkedAt,
+    capabilities: {
+      read: true,
+      sendToOpenDesktopThread: true,
+      createThread: false,
+      createThreadReason: '请先在电脑端新建或打开线程，然后从手机继续发送。',
+      createThreadViaBackground: true,
+      backgroundCodex: true
+    }
+  };
+}
+
 export async function getDesktopBridgeStatus({ force = false } = {}) {
   const now = Date.now();
   if (!force && bridgeStatusCache && now - bridgeStatusCache.checkedAt < BRIDGE_STATUS_CACHE_MS) {
@@ -402,22 +421,7 @@ export async function getDesktopBridgeStatus({ force = false } = {}) {
     reason: error.message
   }));
   if (ipc.connected) {
-    const status = {
-      strict: true,
-      connected: true,
-      mode: 'desktop-ipc',
-      reason: null,
-      socketPath: ipc.socketPath || null,
-      checkedAt: new Date(now).toISOString(),
-      capabilities: {
-        read: true,
-        sendToOpenDesktopThread: true,
-        createThread: false,
-        createThreadReason: '当前 Codex Desktop IPC 只暴露已有线程接管入口，还没有开放外部新建桌面线程入口。',
-        createThreadViaBackground: true,
-        backgroundCodex: true
-      }
-    };
+    const status = desktopIpcBridgeStatus(ipc, { checkedAt: new Date(now).toISOString() });
     bridgeStatusCache = { checkedAt: now, status };
     return status;
   }

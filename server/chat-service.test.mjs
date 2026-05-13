@@ -629,7 +629,7 @@ test('sendChat waits for a desktop-ipc owner before falling back to headless loc
   assert.equal(runPayload, null);
 });
 
-test('sendChat can create a background thread when desktop-ipc cannot create desktop threads', async () => {
+test('sendChat rejects draft sends when desktop-ipc cannot create real desktop threads', async () => {
   let runPayload = null;
   const { service } = makeChatService({
     getDesktopBridgeStatus: async () => ({
@@ -652,36 +652,48 @@ test('sendChat can create a background thread when desktop-ipc cannot create des
     }
   });
 
-  const result = await service.sendChat({
-    projectId: 'project-1',
-    draftSessionId: 'draft-project-1-1',
-    clientTurnId: 'client-turn',
-    message: '从手机后台新建'
-  });
-
-  assert.equal(result.accepted, true);
-  assert.equal(result.delivery, 'started');
-  assert.equal(result.desktopBridge.mode, 'headless-local');
-  assert.equal(runPayload.draftSessionId, 'draft-project-1-1');
-  assert.match(runPayload.message, /从手机后台新建/);
+  await assert.rejects(
+    () => service.sendChat({
+      projectId: 'project-1',
+      draftSessionId: 'draft-project-1-1',
+      clientTurnId: 'client-turn',
+      message: '从手机后台新建'
+    }),
+    (error) => {
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, 'CODEXMOBILE_DESKTOP_CREATE_THREAD_UNAVAILABLE');
+      assert.match(error.message, /请先在电脑端新建或打开一个线程/);
+      return true;
+    }
+  );
+  assert.equal(runPayload, null);
 });
 
 test('sendChat reuses a background-created thread alias for later desktop-ipc sends', async () => {
   const runPayloads = [];
   let desktopStarted = null;
+  let bridgeMode = 'headless-local';
   const { service } = makeChatService({
-    getDesktopBridgeStatus: async () => ({
-      strict: true,
-      connected: true,
-      mode: 'desktop-ipc',
-      reason: null,
-      capabilities: {
-        sendToOpenDesktopThread: true,
-        createThread: false,
-        createThreadViaBackground: true,
-        backgroundCodex: true
-      }
-    }),
+    getDesktopBridgeStatus: async () => bridgeMode === 'headless-local'
+      ? ({
+        strict: false,
+        connected: true,
+        mode: 'headless-local',
+        reason: 'headless',
+        capabilities: { read: true, createThread: true, sendToOpenDesktopThread: false }
+      })
+      : ({
+        strict: true,
+        connected: true,
+        mode: 'desktop-ipc',
+        reason: null,
+        capabilities: {
+          sendToOpenDesktopThread: true,
+          createThread: false,
+          createThreadViaBackground: true,
+          backgroundCodex: true
+        }
+      }),
     runCodexTurn: async (payload, emit) => {
       runPayloads.push(payload);
       emit({
@@ -712,6 +724,7 @@ test('sendChat reuses a background-created thread alias for later desktop-ipc se
   });
   await flushQueuedWork();
 
+  bridgeMode = 'desktop-ipc';
   const second = await service.sendChat({
     projectId: 'project-1',
     draftSessionId: 'draft-project-1-1',
@@ -740,15 +753,14 @@ test('sendChat registers new projectless background threads for mobile and deskt
       projectless: true
     }),
     getDesktopBridgeStatus: async () => ({
-      strict: true,
+      strict: false,
       connected: true,
-      mode: 'desktop-ipc',
-      reason: null,
+      mode: 'headless-local',
+      reason: 'headless',
       capabilities: {
-        sendToOpenDesktopThread: true,
-        createThread: false,
-        createThreadViaBackground: true,
-        backgroundCodex: true
+        read: true,
+        createThread: true,
+        sendToOpenDesktopThread: false
       }
     }),
     runCodexTurn: async (payload, emit) => {
@@ -808,15 +820,14 @@ test('sendChat remembers a started background thread path before broadcasting it
     broadcast: (payload) => events.push(`broadcast:${payload.type}`),
     rememberLiveSession: (session) => events.push(`remember:${session.id}:${session.filePath}`),
     getDesktopBridgeStatus: async () => ({
-      strict: true,
+      strict: false,
       connected: true,
-      mode: 'desktop-ipc',
-      reason: null,
+      mode: 'headless-local',
+      reason: 'headless',
       capabilities: {
-        sendToOpenDesktopThread: true,
-        createThread: false,
-        createThreadViaBackground: true,
-        backgroundCodex: true
+        read: true,
+        createThread: true,
+        sendToOpenDesktopThread: false
       }
     }),
     runCodexTurn: async (payload, emit) => {

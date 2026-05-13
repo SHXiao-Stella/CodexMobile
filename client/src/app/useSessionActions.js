@@ -294,7 +294,7 @@ export function useSessionActions({
         {
           id: `desktop-create-unavailable-${Date.now()}`,
           role: 'activity',
-          content: status?.desktopBridge?.capabilities?.createThreadReason || '当前桌面端还没有开放从手机新建同源对话的入口。请先在桌面端新建或打开一个对话，再从手机继续发送。',
+          content: status?.desktopBridge?.capabilities?.createThreadReason || '请先在电脑端新建/打开线程，然后从手机继续发送。',
           timestamp: new Date().toISOString()
         }
       ]);

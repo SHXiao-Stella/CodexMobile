@@ -2,6 +2,7 @@ import { Archive, BarChart3, ChevronDown, ChevronLeft, Folder, Loader2, MessageS
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api.js';
 import { compactPath, formatTime, sessionRunBadgeState, subAgentSubtitle } from '../app/session-utils.js';
+import { newConversationState } from '../send-state.js';
 
 function quotaPercent(value) {
   const percent = Number(value);
@@ -78,6 +79,7 @@ export function Drawer({
   projects,
   selectedProject,
   selectedSession,
+  desktopBridge,
   expandedProjectIds,
   sessionsByProject,
   loadingProjectId,
@@ -89,6 +91,7 @@ export function Drawer({
   onRenameSession,
   onDeleteSession,
   onNewConversation,
+  onNotice,
   onSync,
   syncing,
   theme,
@@ -105,6 +108,9 @@ export function Drawer({
   const [drawerQuery, setDrawerQuery] = useState('');
   const [threadActionMenu, setThreadActionMenu] = useState(null);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
+  const [newConversationNotice, setNewConversationNotice] = useState('');
+  const newConversation = newConversationState({ desktopBridge });
+  const newConversationDisabled = Boolean(newConversation.disabled);
   const normalizedDrawerQuery = drawerQuery.trim().toLowerCase();
   const runningCount = Object.values(sessionsByProject || {})
     .flatMap((sessions) => (Array.isArray(sessions) ? sessions : []))
@@ -121,12 +127,38 @@ export function Drawer({
     if (!open) {
       setThreadActionMenu(null);
       setNewConversationOpen(false);
+      setNewConversationNotice('');
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!newConversationDisabled) {
+      setNewConversationNotice('');
+    }
+  }, [newConversationDisabled]);
+
+  function showNewConversationUnavailable(event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const reason = newConversation.reason || '请先在电脑端新建或打开线程，然后从手机继续发送。';
+    setThreadActionMenu(null);
+    setNewConversationOpen(true);
+    setNewConversationNotice(reason);
+    onNotice?.({
+      level: 'warning',
+      title: '不建议从手机新建桌面线程',
+      body: reason,
+      durationMs: 7000
+    });
+  }
 
   function startNewConversation(project, event) {
     event?.preventDefault();
     event?.stopPropagation();
+    if (newConversationDisabled) {
+      showNewConversationUnavailable(event);
+      return;
+    }
     if (!project) {
       return;
     }
@@ -361,10 +393,11 @@ export function Drawer({
           </button>
           <button
             type="button"
-            className="project-add-button"
+            className={`project-add-button ${newConversationDisabled ? 'is-disabled' : ''}`}
             onClick={(event) => startNewConversation(project, event)}
             aria-label={`新建${project.projectless ? '普通' : project.name}对话`}
-            title="新建对话"
+            aria-disabled={newConversationDisabled}
+            title={newConversationDisabled ? newConversation.reason : '新建对话'}
           >
             <Plus size={15} />
           </button>
@@ -431,10 +464,17 @@ export function Drawer({
         <div className="drawer-thread-browser">
           <button
             type="button"
-            className={`drawer-new-row ${newConversationOpen ? 'is-open' : ''}`}
-            onClick={() => setNewConversationOpen((current) => !current)}
+            className={`drawer-new-row ${newConversationOpen ? 'is-open' : ''} ${newConversationDisabled ? 'is-disabled' : ''}`}
+            onClick={(event) => {
+              if (newConversationDisabled) {
+                showNewConversationUnavailable(event);
+                return;
+              }
+              setNewConversationOpen((current) => !current);
+            }}
             aria-expanded={newConversationOpen}
-            title="选择新对话位置"
+            aria-disabled={newConversationDisabled}
+            title={newConversationDisabled ? newConversation.reason : '选择新对话位置'}
           >
             <Plus size={16} />
             <span>新对话</span>
@@ -443,7 +483,12 @@ export function Drawer({
 
           {newConversationOpen ? (
             <div className="new-conversation-panel" aria-label="选择新对话位置">
-              {projectlessProject ? (
+              {newConversationDisabled ? (
+                <div className="new-conversation-unavailable" role="status">
+                  <strong>{newConversation.label}</strong>
+                  <small>{newConversationNotice || newConversation.reason}</small>
+                </div>
+              ) : projectlessProject ? (
                 <button type="button" className="new-conversation-option" onClick={(event) => startNewConversation(projectlessProject, event)}>
                   <MessageSquare size={15} />
                   <span>
@@ -452,7 +497,7 @@ export function Drawer({
                   </span>
                 </button>
               ) : null}
-              {projectChoices.map((project) => (
+              {!newConversationDisabled && projectChoices.map((project) => (
                 <button
                   key={project.id}
                   type="button"
@@ -466,7 +511,7 @@ export function Drawer({
                   </span>
                 </button>
               ))}
-              {!projectlessProject && !projectChoices.length ? (
+              {!newConversationDisabled && !projectlessProject && !projectChoices.length ? (
                 <div className="new-conversation-empty">暂无可用位置</div>
               ) : null}
             </div>

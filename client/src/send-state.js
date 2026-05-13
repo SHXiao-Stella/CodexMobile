@@ -15,16 +15,39 @@ export function desktopBridgeCanCreateThread(bridge = null) {
   if (!normalized.connected) {
     return false;
   }
-  if (normalized.capabilities.backgroundCodex || normalized.capabilities.createThreadViaBackground) {
-    return true;
+  if (normalized.mode === 'desktop-ipc' && normalized.capabilities.createThread !== true) {
+    return false;
   }
   if (normalized.capabilities.createThread === false) {
     return false;
   }
-  if (normalized.mode === 'desktop-ipc' && normalized.capabilities.createThread !== true) {
-    return false;
-  }
   return true;
+}
+
+export function newConversationState({ desktopBridge = null } = {}) {
+  const bridge = normalizeDesktopBridge(desktopBridge);
+  if (!bridge.connected) {
+    return {
+      disabled: true,
+      mode: 'unavailable',
+      label: '桌面端 Codex 未连接',
+      reason: bridge.reason || '打开 Codex Desktop，并在电脑端新建或打开线程后再从手机继续发送。'
+    };
+  }
+  if (!desktopBridgeCanCreateThread(bridge)) {
+    return {
+      disabled: true,
+      mode: 'create-unavailable',
+      label: '请先在电脑端新建/打开线程',
+      reason: bridge.capabilities.createThreadReason || '请先在电脑端新建或打开线程，然后从手机继续发送。'
+    };
+  }
+  return {
+    disabled: false,
+    mode: 'available',
+    label: '新对话',
+    reason: ''
+  };
 }
 
 export function composerSendState({
@@ -33,6 +56,7 @@ export function composerSendState({
   uploading = false,
   desktopBridge = null,
   steerable = true,
+  hasSelectedSession,
   sessionIsDraft = false
 } = {}) {
   const bridge = normalizeDesktopBridge(desktopBridge);
@@ -47,10 +71,21 @@ export function composerSendState({
       canInterrupt: false
     };
   }
+  if (hasSelectedSession === false && bridge.mode === 'desktop-ipc' && !sessionIsDraft) {
+    return {
+      disabled: true,
+      label: '请先选择桌面线程',
+      mode: 'no-active-thread',
+      showMenu: false,
+      canSteer: false,
+      canQueue: false,
+      canInterrupt: false
+    };
+  }
   if (sessionIsDraft && !desktopBridgeCanCreateThread(bridge)) {
     return {
       disabled: true,
-      label: '只能继续桌面端已有对话',
+      label: '请先在电脑端新建/打开线程',
       mode: 'create-unavailable',
       showMenu: false,
       canSteer: false,
