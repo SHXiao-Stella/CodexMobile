@@ -92,6 +92,21 @@ export function createChatRouteHandler({
       return true;
     }
 
+    if (method === 'POST' && pathname === '/api/chat/plan/respond') {
+      const body = await readBody(req);
+      try {
+        const result = chatService.respondToPlanImplementation(body);
+        if (result.ok) {
+          sendJson(res, 200, { accepted: true, decision: result.response?.decision || null });
+          return true;
+        }
+        sendJson(res, 404, { error: 'Plan implementation request not found' });
+      } catch (error) {
+        sendJson(res, error.statusCode || 500, { error: error.message || 'Failed to submit plan implementation response' });
+      }
+      return true;
+    }
+
     if (method === 'POST' && pathname === '/api/chat/abort') {
       const body = await readBody(req);
       try {

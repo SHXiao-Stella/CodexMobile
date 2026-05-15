@@ -482,6 +482,25 @@ export function useTurnSubmission({
       return false;
     }
     try {
+      if (planImplementation?.source === 'codex-app-server') {
+        try {
+          await apiFetch('/api/chat/plan/respond', {
+            method: 'POST',
+            body: {
+              threadId: planImplementation.threadId || planImplementation.sessionId,
+              sessionId: planImplementation.threadId || planImplementation.sessionId,
+              turnId: planImplementation.turnId,
+              itemId: planImplementation.itemId || planImplementation.requestId,
+              requestId: planImplementation.requestId,
+              decision: 'accept'
+            }
+          });
+          setMessages((current) => dismissPlanImplementationPrompts(current, planImplementation));
+          return true;
+        } catch {
+          // Stale background request; fall back to the desktop-compatible implementation prompt.
+        }
+      }
       await submitCodexMessage({
         message: '执行计划',
         visibleMessageOverride: '执行计划',
@@ -511,6 +530,23 @@ export function useTurnSubmission({
       return false;
     }
     try {
+      if (planImplementation?.source === 'codex-app-server') {
+        try {
+          await apiFetch('/api/chat/plan/respond', {
+            method: 'POST',
+            body: {
+              threadId: planImplementation.threadId || planImplementation.sessionId,
+              sessionId: planImplementation.threadId || planImplementation.sessionId,
+              turnId: planImplementation.turnId,
+              itemId: planImplementation.itemId || planImplementation.requestId,
+              requestId: planImplementation.requestId,
+              decision: 'decline'
+            }
+          });
+        } catch {
+          // Stale background request; still send the adjustment as a normal follow-up.
+        }
+      }
       await submitCodexMessage({
         message: text,
         clearComposer: false,

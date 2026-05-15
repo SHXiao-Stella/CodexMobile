@@ -450,6 +450,61 @@ test('sendChat sends desktop-ipc plan requests with desktop collaboration mode',
   assert.equal(started.params.serviceTier, 'fast');
 });
 
+test('sendChat clears prior desktop plan mode before implementing a plan', async () => {
+  const collaborationUpdates = [];
+  const starts = [];
+  const { service } = makeChatService({
+    getDesktopBridgeStatus: async () => ({
+      strict: true,
+      connected: true,
+      mode: 'desktop-ipc',
+      reason: null,
+      capabilities: { sendToOpenDesktopThread: true, createThread: false }
+    }),
+    setDesktopFollowerCollaborationMode: async (conversationId, collaborationMode) => {
+      collaborationUpdates.push({ conversationId, collaborationMode });
+      return { ok: true };
+    },
+    startDesktopFollowerTurn: async (conversationId, params) => {
+      starts.push({ conversationId, params });
+      return { result: { turn: { id: `desktop-turn-${starts.length}` } } };
+    }
+  });
+
+  await service.sendChat({
+    projectId: 'project-1',
+    sessionId: 'thread-1',
+    message: 'plan first',
+    collaborationMode: 'plan',
+    model: 'gpt-5.5',
+    reasoningEffort: 'high'
+  });
+  await service.sendChat({
+    projectId: 'project-1',
+    sessionId: 'thread-1',
+    message: 'PLEASE IMPLEMENT THIS PLAN:\n1. Do it',
+    visibleMessage: 'execute plan'
+  });
+
+  assert.deepEqual(collaborationUpdates, [
+    {
+      conversationId: 'thread-1',
+      collaborationMode: {
+        mode: 'plan',
+        settings: {
+          model: 'gpt-5.5',
+          reasoning_effort: 'high',
+          developer_instructions: null
+        }
+      }
+    },
+    { conversationId: 'thread-1', collaborationMode: null }
+  ]);
+  assert.equal(starts.length, 2);
+  assert.equal('collaborationMode' in starts[1].params, false);
+  assert.equal(starts[1].params.input[0].text, 'PLEASE IMPLEMENT THIS PLAN:\n1. Do it');
+});
+
 test('sendChat does not send null desktop collaboration mode for normal follow-up turns', async () => {
   let started = null;
   let collaborationUpdate = 'not-called';
@@ -989,6 +1044,60 @@ test('sendChat exposes app-server user input requests and resolves them through 
   assert.equal(result.ok, true);
   assert.deepEqual(requestResolve, { answers: { choice: { answers: ['Yes'] } } });
   assert.equal(broadcasts.some((payload) => payload.type === 'user-input-resolved' && payload.itemId === 'question-1'), true);
+});
+
+test('sendChat exposes app-server plan implementation requests and waits for response', async () => {
+  let requestResolve = null;
+  const { service, broadcasts } = makeChatService({
+    getDesktopBridgeStatus: async () => ({
+      strict: false,
+      connected: true,
+      mode: 'headless-local',
+      reason: 'headless',
+      capabilities: { read: true, createThread: true, sendToOpenDesktopThread: false }
+    }),
+    runCodexTurn: async (payload, emit) => {
+      const pending = payload.onPlanImplementationRequest({
+        id: 'plan-request-1',
+        method: 'item/plan/requestImplementation',
+        params: {
+          threadId: 'headless-plan-thread-1',
+          turnId: payload.turnId,
+          planContent: '1. Do it'
+        }
+      }, (answer) => {
+        requestResolve = answer;
+      });
+      assert.equal(pending.request.itemId, 'plan-request-1');
+      emit({ type: 'thread-started', sessionId: 'headless-plan-thread-1', previousSessionId: payload.draftSessionId, turnId: payload.turnId });
+      return 'headless-plan-thread-1';
+    }
+  });
+
+  await service.sendChat({
+    projectId: 'project-1',
+    draftSessionId: 'draft-project-1-1',
+    clientTurnId: 'client-turn-plan-request',
+    message: 'plan with implementation request',
+    collaborationMode: 'plan'
+  });
+  await flushQueuedWork();
+
+  const activity = broadcasts.find((payload) => payload.type === 'activity-update' && payload.kind === 'plan_implementation');
+  assert.equal(activity.sessionId, 'headless-plan-thread-1');
+  assert.equal(activity.planImplementation.source, 'codex-app-server');
+  assert.equal(activity.planImplementation.itemId, 'plan-request-1');
+
+  const result = service.respondToPlanImplementation({
+    threadId: 'headless-plan-thread-1',
+    turnId: 'client-turn-plan-request',
+    itemId: 'plan-request-1',
+    decision: 'accept'
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(requestResolve, { decision: 'accept' });
+  assert.equal(broadcasts.some((payload) => payload.type === 'plan-implementation-resolved' && payload.itemId === 'plan-request-1'), true);
 });
 
 test('queue drafts can be listed, deleted, and restored without auto starting during active work', async () => {

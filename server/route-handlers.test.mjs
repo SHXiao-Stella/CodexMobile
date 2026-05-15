@@ -107,6 +107,32 @@ test('chat route handler routes send and abort through chat service', async () =
   assert.deepEqual(calls.map((call) => call.name), ['send', 'abort']);
 });
 
+test('chat route handler routes plan implementation responses through chat service', async () => {
+  const calls = [];
+  const handler = createChatRouteHandler({
+    chatService: {
+      respondToPlanImplementation(body) {
+        calls.push(body);
+        return { ok: true, response: { decision: 'accept' } };
+      }
+    },
+    remoteAddress: () => '127.0.0.1'
+  });
+
+  const req = createRequest('POST', {
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    itemId: 'plan-request-1',
+    decision: 'accept'
+  });
+  const res = createResponse();
+
+  assert.equal(await callWithBody(handler, req, res, new URL('http://local/api/chat/plan/respond')), true);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(JSON.parse(res.body), { accepted: true, decision: 'accept' });
+  assert.equal(calls[0].itemId, 'plan-request-1');
+});
+
 test('file route handler searches project files and preserves project not found response', async () => {
   const handler = createFileRouteHandler({
     getProject(projectId) {

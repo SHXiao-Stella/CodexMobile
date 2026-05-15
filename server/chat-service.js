@@ -19,6 +19,7 @@ import { createChatImageHandler } from './chat-image-handler.js';
 import { createChatAutoNamer } from './chat-auto-title.js';
 import { createDesktopTurnMonitor } from './desktop-turn-monitor.js';
 import { PendingUserInputRequests } from './user-input-requests.js';
+import { PendingPlanImplementationRequests } from './plan-implementation-requests.js';
 
 export { normalizeSelectedSkills } from './chat-request-prep.js';
 
@@ -59,6 +60,7 @@ export function createChatService({
   const rememberTurnEvent = chatQueue.rememberTurnEvent;
   const resolveConversationKey = chatQueue.resolveConversationKey;
   const pendingUserInputs = new PendingUserInputRequests();
+  const pendingPlanImplementations = new PendingPlanImplementationRequests();
   const chatImage = createChatImageHandler({
     imagePromptState,
     runImageTurn,
@@ -76,6 +78,7 @@ export function createChatService({
     broadcast
   });
   const desktopFollowerSettingsCache = new Map();
+  const desktopFollowerCollaborationModeCache = new Map();
 
   function sessionHasActiveWork(sessionId) {
     return (
@@ -100,7 +103,8 @@ export function createChatService({
         activeImageRuns: Array.isArray(imageRuns) ? imageRuns.length : 0,
         ...desktopTurnMonitor.getDiagnostics()
       },
-      userInput: pendingUserInputs.getDiagnostics()
+      userInput: pendingUserInputs.getDiagnostics(),
+      planImplementation: pendingPlanImplementations.getDiagnostics()
     };
   }
 
@@ -213,6 +217,8 @@ export function createChatService({
       scheduleAutoNameCompletedSession,
       onUserInputRequest: handleUserInputRequest,
       onUserInputCleanup: clearUserInputRequestsForTurn,
+      onPlanImplementationRequest: handlePlanImplementationRequest,
+      onPlanImplementationCleanup: clearPlanImplementationRequestsForTurn,
       onQueueDrained: () => setTimeout(() => runNextQueuedChat(queueKey), 0)
     });
   }
@@ -256,6 +262,51 @@ export function createChatService({
     return cleared;
   }
 
+  function handlePlanImplementationRequest(message, resolve) {
+    const { key, request } = pendingPlanImplementations.add(message, resolve);
+    const timestamp = new Date().toISOString();
+    broadcast({
+      type: 'activity-update',
+      sessionId: request.threadId,
+      threadId: request.threadId,
+      turnId: request.turnId,
+      messageId: request.itemId,
+      kind: 'plan_implementation',
+      label: '等待确认执行计划',
+      status: 'running',
+      detail: request.planContent,
+      timestamp,
+      planImplementation: {
+        source: request.source,
+        requestId: request.requestId,
+        threadId: request.threadId,
+        itemId: request.itemId,
+        turnId: request.turnId,
+        planContent: request.planContent,
+        completed: false
+      },
+      key
+    });
+    return { key, request };
+  }
+
+  function clearPlanImplementationRequestsForTurn({ threadId, turnId } = {}) {
+    const cleared = pendingPlanImplementations.clearForTurn({ threadId, turnId });
+    const timestamp = new Date().toISOString();
+    for (const request of cleared) {
+      broadcast({
+        type: 'plan-implementation-resolved',
+        threadId: request.threadId,
+        sessionId: request.threadId,
+        turnId: request.turnId,
+        itemId: request.itemId,
+        requestId: request.requestId,
+        timestamp
+      });
+    }
+    return cleared;
+  }
+
   function respondToUserInput(body = {}) {
     const result = pendingUserInputs.answer(body);
     if (!result.ok) {
@@ -268,6 +319,25 @@ export function createChatService({
       sessionId: result.request.threadId,
       turnId: result.request.turnId,
       itemId: result.request.itemId,
+      timestamp
+    });
+    return result;
+  }
+
+  function respondToPlanImplementation(body = {}) {
+    const result = pendingPlanImplementations.answer(body);
+    if (!result.ok) {
+      return result;
+    }
+    const timestamp = new Date().toISOString();
+    broadcast({
+      type: 'plan-implementation-resolved',
+      threadId: result.request.threadId,
+      sessionId: result.request.threadId,
+      turnId: result.request.turnId,
+      itemId: result.request.itemId,
+      requestId: result.request.requestId,
+      decision: result.response.decision,
       timestamp
     });
     return result;
@@ -388,6 +458,7 @@ export function createChatService({
             setDesktopFollowerModelAndReasoning,
             desktopFollowerSettingsCache,
             setDesktopFollowerCollaborationMode,
+            desktopFollowerCollaborationModeCache,
             steerDesktopFollowerTurn,
             startDesktopFollowerTurn,
             interruptDesktopFollowerTurn,
@@ -671,6 +742,7 @@ export function createChatService({
     loadRecentImagePrompts: chatImage.loadRecentImagePrompts,
     listQueue: chatQueue.listQueue,
     removeQueuedDraft: chatQueue.removeQueuedDraft,
+    respondToPlanImplementation,
     respondToUserInput,
     restoreQueuedDraft: chatQueue.restoreQueuedDraft,
     sendChat,

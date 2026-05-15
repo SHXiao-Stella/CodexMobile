@@ -2,6 +2,8 @@ import { buildCodexTurnInput } from './codex-native-images.js';
 import { requestDesktopThreadSnapshotRefresh as defaultRequestDesktopThreadSnapshotRefresh } from './desktop-ipc-client.js';
 import { openCodexDesktopThread as defaultOpenCodexDesktopThread } from './desktop-thread-opener.js';
 
+const IMPLEMENT_PLAN_PROMPT_PREFIX = 'PLEASE IMPLEMENT THIS PLAN:';
+
 export async function assertDesktopBridgeAvailable(getDesktopBridgeStatus) {
   const bridge = getDesktopBridgeStatus ? await getDesktopBridgeStatus({ force: true }) : null;
   if (bridge && !bridge.connected) {
@@ -102,12 +104,38 @@ function userMessageMetadataForSendMode(sendMode = 'start') {
 async function syncDesktopFollowerCollaborationMode({
   selectedSessionId,
   collaborationMode,
-  setDesktopFollowerCollaborationMode
+  setDesktopFollowerCollaborationMode,
+  desktopFollowerCollaborationModeCache,
+  forceClearCollaborationMode = false
 }) {
-  if (!setDesktopFollowerCollaborationMode || collaborationMode?.mode !== 'plan') {
+  if (!setDesktopFollowerCollaborationMode) {
     return;
   }
-  await setDesktopFollowerCollaborationMode(selectedSessionId, collaborationMode);
+  const desiredMode = collaborationMode?.mode === 'plan' ? collaborationMode : null;
+  if (desktopFollowerCollaborationModeCache) {
+    const desiredKey = JSON.stringify(desiredMode);
+    const hadPreviousMode = desktopFollowerCollaborationModeCache.has(selectedSessionId);
+    if (!hadPreviousMode && desiredMode === null && !forceClearCollaborationMode) {
+      return;
+    }
+    if (desktopFollowerCollaborationModeCache.get(selectedSessionId) === desiredKey) {
+      return;
+    }
+    await setDesktopFollowerCollaborationMode(selectedSessionId, desiredMode);
+    if (desiredMode === null) {
+      desktopFollowerCollaborationModeCache.delete(selectedSessionId);
+    } else {
+      desktopFollowerCollaborationModeCache.set(selectedSessionId, desiredKey);
+    }
+    return;
+  }
+  if (desiredMode === null) {
+    if (forceClearCollaborationMode) {
+      await setDesktopFollowerCollaborationMode(selectedSessionId, null);
+    }
+    return;
+  }
+  await setDesktopFollowerCollaborationMode(selectedSessionId, desiredMode);
 }
 
 function desktopFollowerSettingsKey(model, reasoningEffort) {
@@ -176,6 +204,7 @@ export async function sendViaDesktopIpc({
   setDesktopFollowerModelAndReasoning,
   desktopFollowerSettingsCache = null,
   setDesktopFollowerCollaborationMode,
+  desktopFollowerCollaborationModeCache = null,
   steerDesktopFollowerTurn,
   startDesktopFollowerTurn,
   interruptDesktopFollowerTurn,
@@ -195,6 +224,7 @@ export async function sendViaDesktopIpc({
     attachments,
     selectedSkills
   });
+  const forceClearCollaborationMode = String(codexMessage || '').trim().startsWith(IMPLEMENT_PLAN_PROMPT_PREFIX);
   const now = new Date().toISOString();
   const lastSession = getSession(selectedSessionId);
   const baseTurnStartParams = {
@@ -224,7 +254,9 @@ export async function sendViaDesktopIpc({
       await syncDesktopFollowerCollaborationMode({
         selectedSessionId,
         collaborationMode,
-        setDesktopFollowerCollaborationMode
+        setDesktopFollowerCollaborationMode,
+        desktopFollowerCollaborationModeCache,
+        forceClearCollaborationMode
       });
       result = await steerDesktopFollowerTurn(selectedSessionId, {
         input,
@@ -253,7 +285,9 @@ export async function sendViaDesktopIpc({
       await syncDesktopFollowerCollaborationMode({
         selectedSessionId,
         collaborationMode,
-        setDesktopFollowerCollaborationMode
+        setDesktopFollowerCollaborationMode,
+        desktopFollowerCollaborationModeCache,
+        forceClearCollaborationMode
       });
       result = await startDesktopFollowerTurn(selectedSessionId, baseTurnStartParams);
     }
@@ -394,6 +428,8 @@ export function runQueuedHeadlessChatJob({
   scheduleAutoNameCompletedSession,
   onUserInputRequest,
   onUserInputCleanup,
+  onPlanImplementationRequest,
+  onPlanImplementationCleanup,
   onQueueDrained
 }) {
   const metadataUpdates = [];
@@ -450,6 +486,8 @@ export function runQueuedHeadlessChatJob({
       collaborationMode: job.collaborationMode,
       onUserInputRequest,
       onUserInputCleanup,
+      onPlanImplementationRequest,
+      onPlanImplementationCleanup,
       turnId: job.turnId
     },
     (payload) => {

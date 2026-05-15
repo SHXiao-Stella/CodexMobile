@@ -769,7 +769,7 @@ function abortError() {
   return error;
 }
 
-export async function runCodexTurn({ sessionId, draftSessionId, projectPath, message, attachments = [], selectedSkills = [], model, reasoningEffort, serviceTier, permissionMode, collaborationMode = null, onUserInputRequest = null, onUserInputCleanup = null, turnId: providedTurnId }, emit) {
+export async function runCodexTurn({ sessionId, draftSessionId, projectPath, message, attachments = [], selectedSkills = [], model, reasoningEffort, serviceTier, permissionMode, collaborationMode = null, onUserInputRequest = null, onUserInputCleanup = null, onPlanImplementationRequest = null, onPlanImplementationCleanup = null, turnId: providedTurnId }, emit) {
   const workingDirectory = await ensureAsciiWorkingDirectory(projectPath);
   const { sandboxMode, approvalPolicy } = mapPermissionMode(permissionMode);
   const feishuSkillKeys = detectFeishuSkillKeys(message);
@@ -839,6 +839,7 @@ export async function runCodexTurn({ sessionId, draftSessionId, projectPath, mes
   let turnInactivityTimeoutTimer = null;
   let resetTurnInactivityTimeout = () => {};
   const pendingUserInputServerRequests = new Map();
+  const pendingPlanImplementationServerRequests = new Map();
 
   async function cancelPendingUserInputServerRequests() {
     if (!pendingUserInputServerRequests.size) {
@@ -853,6 +854,22 @@ export async function runCodexTurn({ sessionId, draftSessionId, projectPath, mes
         console.warn('[codex] Failed to clear pending user input request:', error.message);
       }
       pending.resolve(fallback);
+    }
+    await Promise.resolve();
+  }
+
+  async function cancelPendingPlanImplementationServerRequests() {
+    if (!pendingPlanImplementationServerRequests.size) {
+      return;
+    }
+    for (const [key, pending] of pendingPlanImplementationServerRequests.entries()) {
+      pendingPlanImplementationServerRequests.delete(key);
+      try {
+        onPlanImplementationCleanup?.(pending.request);
+      } catch (error) {
+        console.warn('[codex] Failed to clear pending plan implementation request:', error.message);
+      }
+      pending.resolve({ decision: 'decline' });
     }
     await Promise.resolve();
   }
@@ -895,6 +912,39 @@ export async function runCodexTurn({ sessionId, draftSessionId, projectPath, mes
             key = userInputRequestKey(pending?.request);
             if (key) {
               pendingUserInputServerRequests.set(key, {
+                request: pending.request,
+                resolve: resolveOnce
+              });
+            }
+          });
+        }
+        if (appMessage?.method === 'item/plan/requestImplementation' && onPlanImplementationRequest) {
+          if (turnInactivityTimeoutTimer) {
+            clearTimeout(turnInactivityTimeoutTimer);
+            turnInactivityTimeoutTimer = null;
+          }
+          return new Promise((resolve) => {
+            let key = null;
+            const resolveOnce = (result) => {
+              if (key) {
+                pendingPlanImplementationServerRequests.delete(key);
+              }
+              resetTurnInactivityTimeout();
+              resolve(result);
+            };
+            let pending = null;
+            try {
+              pending = onPlanImplementationRequest(appMessage, resolveOnce);
+            } catch (error) {
+              console.warn('[codex] Failed to register plan implementation request:', error.message);
+              resolveOnce({ decision: 'decline' });
+              return;
+            }
+            key = [pending?.request?.threadId, pending?.request?.turnId, pending?.request?.itemId]
+              .map((value) => String(value || '').trim())
+              .join(':');
+            if (key) {
+              pendingPlanImplementationServerRequests.set(key, {
                 request: pending.request,
                 resolve: resolveOnce
               });
@@ -1107,6 +1157,7 @@ export async function runCodexTurn({ sessionId, draftSessionId, projectPath, mes
     }
   } finally {
     await cancelPendingUserInputServerRequests();
+    await cancelPendingPlanImplementationServerRequests();
     if (turnTimeoutTimer) {
       clearTimeout(turnTimeoutTimer);
     }

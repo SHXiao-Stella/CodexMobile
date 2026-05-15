@@ -101,6 +101,65 @@ test('desktop ipc syncs model and reasoning again when settings change', async (
   ]);
 });
 
+test('desktop ipc clears cached plan collaboration mode before normal implementation turn', async () => {
+  const collaborationCache = new Map();
+  const syncs = [];
+  const base = {
+    desktopFollowerCollaborationModeCache: collaborationCache,
+    setDesktopFollowerCollaborationMode: async (conversationId, collaborationMode) => {
+      syncs.push({ conversationId, collaborationMode });
+    }
+  };
+
+  await sendViaDesktopIpc(baseDesktopIpcSend({
+    ...base,
+    collaborationMode: {
+      mode: 'plan',
+      settings: {
+        model: 'gpt-5.5',
+        reasoning_effort: 'high',
+        developer_instructions: null
+      }
+    }
+  }));
+  await sendViaDesktopIpc(baseDesktopIpcSend({
+    ...base,
+    codexMessage: 'PLEASE IMPLEMENT THIS PLAN:\n1. Do it',
+    visibleMessage: '执行计划'
+  }));
+
+  assert.deepEqual(syncs, [
+    {
+      conversationId: 'thread-1',
+      collaborationMode: {
+        mode: 'plan',
+        settings: {
+          model: 'gpt-5.5',
+          reasoning_effort: 'high',
+          developer_instructions: null
+        }
+      }
+    },
+    { conversationId: 'thread-1', collaborationMode: null }
+  ]);
+});
+
+test('desktop ipc clears plan collaboration mode for implementation prompts even without cache', async () => {
+  const syncs = [];
+
+  await sendViaDesktopIpc(baseDesktopIpcSend({
+    codexMessage: 'PLEASE IMPLEMENT THIS PLAN:\n1. Do it',
+    visibleMessage: '执行计划',
+    setDesktopFollowerCollaborationMode: async (conversationId, collaborationMode) => {
+      syncs.push({ conversationId, collaborationMode });
+    }
+  }));
+
+  assert.deepEqual(syncs, [
+    { conversationId: 'thread-1', collaborationMode: null }
+  ]);
+});
+
 test('desktop ipc default permission sends a complete workspaceWrite sandbox policy', async () => {
   let receivedParams = null;
 
