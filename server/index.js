@@ -56,6 +56,7 @@ import { publicVoiceSpeechStatus } from './voice-speaker.js';
 import { publicVoiceRealtimeStatus, startVoiceRealtimeProxy } from './realtime-voice.js';
 import { maybeAutoNameSession } from './session-title-generator.js';
 import { createChatService } from './chat-service.js';
+import { createDesktopApprovalService } from './desktop-approval-service.js';
 import { readBody, sendJson } from './http-utils.js';
 import { installManagedProcessShutdown, managedProcessSnapshot } from './process-manager.js';
 import { createPushService } from './push-service.js';
@@ -166,6 +167,10 @@ function broadcast(payload) {
   });
 }
 
+const desktopApprovalService = createDesktopApprovalService({
+  broadcast
+});
+
 const chatService = createChatService({
   imagePromptState: IMAGE_PROMPT_STATE,
   defaultReasoningEffort: DEFAULT_REASONING_EFFORT,
@@ -225,7 +230,8 @@ const handleVoiceApi = createVoiceRouteHandler({
 });
 const handleChatApi = createChatRouteHandler({
   chatService,
-  remoteAddress
+  remoteAddress,
+  desktopApprovalService
 });
 
 function getMemoryDiagnosticsSnapshot() {
@@ -304,6 +310,7 @@ async function publicStatus(authenticated) {
     docs: await feishuIntegration.publicDocsStatus(authenticated),
     syncedAt: snapshot.syncedAt,
     activeRuns: [...getActiveRuns(), ...chatService.getActiveDesktopIpcRuns(), ...chatService.getActiveImageRuns()],
+    pendingApprovals: authenticated ? desktopApprovalService.listPending() : [],
     managedProcesses: authenticated ? managedProcessSnapshot() : [],
     memoryDiagnostics: authenticated ? getMemoryDiagnosticsSnapshot() : null,
     auth: {
@@ -421,6 +428,7 @@ async function main() {
   const auth = await initializeAuth();
   await feishuIntegration.loadState();
   await chatService.loadRecentImagePrompts();
+  desktopApprovalService.start();
 
   const server = http.createServer(requestHandler);
   const wss = new WebSocketServer({ noServer: true });
@@ -429,6 +437,7 @@ async function main() {
 
   installManagedProcessShutdown({
     async beforeShutdown() {
+      await desktopApprovalService.stop();
       for (const ws of [...sockets]) {
         try {
           ws.close(1001, 'server shutting down');

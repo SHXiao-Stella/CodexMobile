@@ -215,6 +215,27 @@ export async function readCodexWorkspaceState() {
       !Array.isArray(parsed['thread-workspace-root-hints'])
       ? parsed['thread-workspace-root-hints']
       : {};
+    const persistedAtomState = parsed['electron-persisted-atom-state'] &&
+      typeof parsed['electron-persisted-atom-state'] === 'object' &&
+      !Array.isArray(parsed['electron-persisted-atom-state'])
+      ? parsed['electron-persisted-atom-state']
+      : {};
+    const threadPermissionWorkspaceRoots = {};
+    const threadPermissionsSource = parsed['heartbeat-thread-permissions-by-id'] || persistedAtomState['heartbeat-thread-permissions-by-id'];
+    const threadPermissions = threadPermissionsSource &&
+      typeof threadPermissionsSource === 'object' &&
+      !Array.isArray(threadPermissionsSource)
+      ? threadPermissionsSource
+      : {};
+    for (const [threadId, permissions] of Object.entries(threadPermissions)) {
+      const roots = permissions?.sandboxPolicy?.writableRoots;
+      const root = Array.isArray(roots)
+        ? roots.find((item) => typeof item === 'string' && item.trim())
+        : '';
+      if (typeof root === 'string' && root.trim()) {
+        threadPermissionWorkspaceRoots[threadId] = root;
+      }
+    }
     const orderedRoots = [
       ...(Array.isArray(parsed['project-order']) ? parsed['project-order'] : []),
       ...(Array.isArray(parsed['electron-saved-workspace-roots']) ? parsed['electron-saved-workspace-roots'] : [])
@@ -237,12 +258,12 @@ export async function readCodexWorkspaceState() {
       });
     }
 
-    return { projects, projectlessThreadIds, threadWorkspaceRootHints };
+    return { projects, projectlessThreadIds, threadWorkspaceRootHints, threadPermissionWorkspaceRoots };
   } catch (error) {
     if (error.code !== 'ENOENT') {
       console.warn('[config] Failed to read Codex workspace state:', error.message);
     }
-    return { projects: [], projectlessThreadIds: [], threadWorkspaceRootHints: {} };
+    return { projects: [], projectlessThreadIds: [], threadWorkspaceRootHints: {}, threadPermissionWorkspaceRoots: {} };
   }
 }
 

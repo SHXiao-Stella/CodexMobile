@@ -201,6 +201,154 @@
   opacity: 0.72;
 }
 
+.desktop-approval-banner {
+  position: fixed;
+  z-index: 48;
+  top: calc(env(safe-area-inset-top, 0px) + 72px);
+  left: 14px;
+  right: 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 12px;
+  border: 1px solid rgba(180, 83, 9, 0.24);
+  border-radius: 12px;
+  color: #431407;
+  background: rgba(255, 251, 235, 0.96);
+  box-shadow: 0 14px 36px rgba(120, 53, 15, 0.16);
+  backdrop-filter: blur(18px) saturate(1.08);
+}
+
+.desktop-approval-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: #92400e;
+  background: rgba(254, 243, 199, 0.92);
+}
+
+.desktop-approval-body {
+  min-width: 0;
+}
+
+.desktop-approval-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 800;
+}
+
+.desktop-approval-title small {
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.desktop-approval-summary,
+.desktop-approval-meta {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.desktop-approval-summary {
+  margin-top: 3px;
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.desktop-approval-meta {
+  margin-top: 2px;
+  color: #78716c;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.desktop-approval-error {
+  margin-top: 5px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.desktop-approval-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.desktop-approval-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.desktop-approval-actions button:disabled {
+  cursor: progress;
+  opacity: 0.68;
+}
+
+.desktop-approval-actions .is-deny {
+  color: #991b1b;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.desktop-approval-actions .is-approve {
+  color: #ffffff;
+  background: #15803d;
+}
+
+[data-theme="dark"] .desktop-approval-banner {
+  border-color: rgba(245, 158, 11, 0.24);
+  color: #ffedd5;
+  background: rgba(36, 25, 18, 0.96);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .desktop-approval-icon {
+  color: #fed7aa;
+  background: rgba(120, 53, 15, 0.42);
+}
+
+[data-theme="dark"] .desktop-approval-summary {
+  color: #f5f5f4;
+}
+
+[data-theme="dark"] .desktop-approval-meta,
+[data-theme="dark"] .desktop-approval-title small {
+  color: #d6d3d1;
+}
+
+[data-theme="dark"] .desktop-approval-actions .is-deny {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.28);
+}
+
+@media (max-width: 560px) {
+  .desktop-approval-banner {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .desktop-approval-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    width: 100%;
+  }
+}
+
 .message-row.is-plan,
 .message-row.is-plan-request {
   justify-content: center;

@@ -5,6 +5,7 @@ import { normalizeDesktopUserInputSubmission } from './user-input-requests.js';
 export function createChatRouteHandler({
   chatService,
   remoteAddress = () => '',
+  desktopApprovalService = null,
   submitDesktopFollowerUserInput = defaultSubmitDesktopFollowerUserInput
 }) {
   if (!chatService) {
@@ -66,6 +67,30 @@ export function createChatRouteHandler({
         sendJson(res, 202, result);
       } catch (error) {
         sendJson(res, error.statusCode || 500, { error: error.message || 'Failed to send chat' });
+      }
+      return true;
+    }
+
+    if (method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'chat' && parts[2] === 'approvals' && parts[4] === 'decision') {
+      const id = decodeURIComponent(parts[3]);
+      const body = await readBody(req);
+      if (!desktopApprovalService) {
+        sendJson(res, 404, { error: 'Desktop approval service not available' });
+        return true;
+      }
+      try {
+        const result = await desktopApprovalService.decide(id, body.decision);
+        if (result.ok) {
+          sendJson(res, 200, { accepted: true });
+          return true;
+        }
+        if (result.reason === 'not-found' || result.reason === 'stale') {
+          sendJson(res, 404, { error: 'Desktop approval request not found or already handled', reason: result.reason });
+          return true;
+        }
+        sendJson(res, 502, { error: result.error || 'Failed to send desktop approval decision', reason: result.reason });
+      } catch (error) {
+        sendJson(res, error.statusCode || 500, { error: error.message || 'Failed to send desktop approval decision' });
       }
       return true;
     }

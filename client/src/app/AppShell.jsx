@@ -1,5 +1,6 @@
 import { Composer } from '../composer/Composer.jsx';
 import { ChatPane } from '../chat/ChatPane.jsx';
+import { DesktopApprovalBanner } from '../chat/DesktopApprovalBanner.jsx';
 import { ImagePreviewModal } from '../chat/ImagePreview.jsx';
 import { ConnectionRecoveryCard, DocsPanel, Drawer, GitPanel, ToastStack, TopBar } from '../panels/index.js';
 
@@ -10,7 +11,8 @@ export function AppShell({ shellClass, panelProps, drawerProps, chatProps, compo
     gitPanelProps,
     recoveryCardProps,
     toastStackProps,
-    imagePreviewProps
+    imagePreviewProps,
+    desktopApprovalProps
   } = panelProps;
 
   return (
@@ -21,6 +23,7 @@ export function AppShell({ shellClass, panelProps, drawerProps, chatProps, compo
       <GitPanel {...gitPanelProps} />
       <ConnectionRecoveryCard {...recoveryCardProps} />
       <ToastStack {...toastStackProps} />
+      <DesktopApprovalBanner {...desktopApprovalProps} />
       <ChatPane {...chatProps} />
       <Composer {...composerProps} />
       <ImagePreviewModal {...imagePreviewProps} />

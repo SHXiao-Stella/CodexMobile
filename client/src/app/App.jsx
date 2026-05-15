@@ -24,6 +24,7 @@ import { applyPwaTheme } from './pwa-theme.js';
 import { nextSyncedComposerSettings } from './model-sync.js';
 import { rememberSelectedSession } from './selection-persistence.js';
 import { markUserInputMessageResolved } from '../notification-events.js';
+import { removePendingDesktopApproval } from '../desktop-approval-state.js';
 import {
   buildComposerRunStatus,
   emptyContextStatus,
@@ -515,6 +516,41 @@ export default function App() {
     setMessages((current) => markUserInputMessageResolved(current, message));
   }
 
+  async function handleDesktopApprovalDecision(approval, decision) {
+    const id = String(approval?.id || '').trim();
+    if (!id) {
+      return;
+    }
+    try {
+      await apiFetch(`/api/chat/approvals/${encodeURIComponent(id)}/decision`, {
+        method: 'POST',
+        body: { decision }
+      });
+      setStatus((current) => removePendingDesktopApproval(current, id));
+      showToast({
+        level: decision === 'deny' ? 'info' : 'success',
+        title: decision === 'deny' ? '已拒绝桌面权限' : '已允许桌面权限',
+        body: approval.summary || ''
+      });
+    } catch (error) {
+      if (error.status === 404) {
+        setStatus((current) => removePendingDesktopApproval(current, id));
+        showToast({
+          level: 'warning',
+          title: '审批已失效',
+          body: '该请求已在桌面端处理或不再等待审批。'
+        });
+        return;
+      }
+      showToast({
+        level: 'error',
+        title: '审批发送失败',
+        body: error.message || '请稍后重试。'
+      });
+      throw error;
+    }
+  }
+
   async function handleGitAction(action) {
     if (!selectedProject || selectedRunning) {
       return;
@@ -611,6 +647,10 @@ export default function App() {
     imagePreviewProps: {
       image: previewImage,
       onClose: () => setPreviewImage(null)
+    },
+    desktopApprovalProps: {
+      approvals: status.pendingApprovals || [],
+      onDecision: handleDesktopApprovalDecision
     }
   };
   const drawerProps = {

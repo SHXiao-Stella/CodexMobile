@@ -18,6 +18,8 @@ let lastLocalSessionIndexDiagnostics = {
   metaCacheHits: 0,
   metaCacheMisses: 0,
   metaCacheSize: 0,
+  metaReadFailures: 0,
+  lockedFallbackThreads: 0,
   returnedThreads: 0,
   error: null
 };
@@ -174,6 +176,25 @@ function pruneJsonlMetaCache(files = []) {
   }
 }
 
+function workspaceRootForLockedThread(id, {
+  threadWorkspaceRootHints = {},
+  threadPermissionWorkspaceRoots = {}
+} = {}) {
+  const key = String(id || '').trim();
+  if (!key) {
+    return '';
+  }
+  const directHint = threadWorkspaceRootHints?.[key];
+  if (typeof directHint === 'string' && directHint.trim()) {
+    return path.resolve(directHint);
+  }
+  const permissionHint = threadPermissionWorkspaceRoots?.[key];
+  if (typeof permissionHint === 'string' && permissionHint.trim()) {
+    return path.resolve(permissionHint);
+  }
+  return '';
+}
+
 export function clearLocalSessionIndexCache() {
   jsonlMetaCache.clear();
 }
@@ -196,7 +217,10 @@ export function mergeDesktopThreadLists(primaryThreads = [], fallbackThreads = [
 export async function readLocalSessionThreads({
   sessionIndexPath = CODEX_SESSION_INDEX,
   sessionsDir = CODEX_SESSIONS_DIR,
-  limit = 1000
+  limit = 1000,
+  threadWorkspaceRootHints = {},
+  threadPermissionWorkspaceRoots = {},
+  readJsonlMetadata = readCachedFirstJsonLine
 } = {}) {
   const startedAt = new Date().toISOString();
   const startedMs = Date.now();
@@ -209,6 +233,8 @@ export async function readLocalSessionThreads({
     metaCacheHits: 0,
     metaCacheMisses: 0,
     metaCacheSize: 0,
+    metaReadFailures: 0,
+    lockedFallbackThreads: 0,
     returnedThreads: 0,
     error: null
   };
@@ -248,11 +274,32 @@ export async function readLocalSessionThreads({
       }
       let metaRow = null;
       try {
-        metaRow = await readCachedFirstJsonLine(entry.path, {
+        metaRow = await readJsonlMetadata(entry.path, {
           mtimeMs: entry.fileMtimeMs,
           size: entry.fileSize
         }, diagnostics);
-      } catch {
+      } catch (error) {
+        diagnostics.metaReadFailures += 1;
+        const fallbackCwd = workspaceRootForLockedThread(entry.id, {
+          threadWorkspaceRootHints,
+          threadPermissionWorkspaceRoots
+        });
+        if (!fallbackCwd) {
+          continue;
+        }
+        diagnostics.lockedFallbackThreads += 1;
+        threads.push({
+          id: entry.id,
+          name: entry.name || null,
+          cwd: fallbackCwd,
+          path: entry.path,
+          preview: '',
+          updatedAt: timestampSeconds(entry.updatedAtIso)
+            ?? timestampSeconds(entry.fallbackUpdatedAtIso)
+            ?? Number(entry.fileMtimeMs || 0) / 1000,
+          source: 'vscode',
+          modelProvider: null
+        });
         continue;
       }
       const meta = metaRow?.type === 'session_meta' ? metaRow.payload || {} : {};

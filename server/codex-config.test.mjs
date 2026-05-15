@@ -61,3 +61,41 @@ test('registerProjectlessThread preserves concurrent registrations in global sta
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('readCodexWorkspaceState exposes desktop thread permission roots as fallback workspace hints', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-config-test-'));
+  const codexHome = path.join(tempRoot, '.codex');
+  const workspaceRoot = path.join(tempRoot, 'LBCode');
+  try {
+    const {
+      CODEX_GLOBAL_STATE_PATH,
+      readCodexWorkspaceState
+    } = await importCodexConfigWithHome(codexHome);
+
+    await fs.mkdir(codexHome, { recursive: true });
+    await fs.writeFile(
+      CODEX_GLOBAL_STATE_PATH,
+      JSON.stringify({
+        'electron-persisted-atom-state': {
+          'heartbeat-thread-permissions-by-id': {
+            '019e10ec-e8ef-7940-8532-4266412a0586': {
+              sandboxPolicy: {
+                type: 'workspaceWrite',
+                writableRoots: [workspaceRoot]
+              }
+            }
+          }
+        }
+      }),
+      'utf8'
+    );
+
+    const workspaceState = await readCodexWorkspaceState();
+    assert.equal(
+      workspaceState.threadPermissionWorkspaceRoots['019e10ec-e8ef-7940-8532-4266412a0586'],
+      workspaceRoot
+    );
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});

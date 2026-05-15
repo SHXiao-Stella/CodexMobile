@@ -107,6 +107,44 @@ test('readLocalSessionThreads reuses cached jsonl metadata until file mtime or s
   });
 });
 
+test('readLocalSessionThreads keeps locked active desktop sessions when workspace root is known', async () => {
+  clearLocalSessionIndexCache();
+  await withTempDir(async (dir) => {
+    const id = '019e10ec-e8ef-7940-8532-4266412a0586';
+    const cwd = path.join(dir, 'LBCode');
+    const filePath = await writeRollout(dir, { id, cwd });
+    const indexPath = path.join(dir, 'session_index.jsonl');
+    await fs.writeFile(indexPath, JSON.stringify({
+      id,
+      thread_name: 'Active locked thread',
+      updated_at: '2026-05-15T08:10:01.000Z'
+    }));
+
+    const threads = await readLocalSessionThreads({
+      sessionIndexPath: indexPath,
+      sessionsDir: path.join(dir, 'sessions'),
+      threadPermissionWorkspaceRoots: { [id]: cwd },
+      readJsonlMetadata: async () => {
+        const error = new Error('locked');
+        error.code = 'EPERM';
+        throw error;
+      }
+    });
+
+    assert.equal(threads.length, 1);
+    assert.equal(threads[0].id, id);
+    assert.equal(threads[0].name, 'Active locked thread');
+    assert.equal(threads[0].cwd, cwd);
+    assert.equal(threads[0].path, filePath);
+    assert.equal(threads[0].source, 'vscode');
+    assert.equal(threads[0].updatedAt, Date.parse('2026-05-15T08:10:01.000Z') / 1000);
+
+    const diagnostics = getLocalSessionIndexDiagnostics();
+    assert.equal(diagnostics.metaReadFailures, 1);
+    assert.equal(diagnostics.lockedFallbackThreads, 1);
+  });
+});
+
 test('mergeDesktopThreadLists keeps app-server data and fills missing local fields', () => {
   const merged = mergeDesktopThreadLists([
     {

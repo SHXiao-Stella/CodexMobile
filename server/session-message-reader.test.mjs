@@ -371,6 +371,35 @@ test('session message reader falls back to rollout jsonl when desktop thread is 
   }
 });
 
+test('session message reader opens locked active desktop threads without failing the page', async () => {
+  const accessDenied = new Error('failed to read thread: os error 5 access denied');
+  accessDenied.code = 'EPERM';
+  const reader = createSessionMessageReader({
+    readDeletedMessageIds: async () => new Set(),
+    readDesktopThread: async () => {
+      throw accessDenied;
+    },
+    resolveSessionThread: async (sessionId) => ({
+      id: sessionId,
+      filePath: 'C:/Users/Shuhua/.codex/sessions/locked.jsonl'
+    }),
+    readRolloutThread: async () => {
+      const error = new Error('EPERM: operation not permitted');
+      error.code = 'EPERM';
+      throw error;
+    }
+  });
+
+  const result = await reader.readSessionMessages('locked-session');
+
+  assert.equal(result.messages.length, 1);
+  assert.equal(result.messages[0].role, 'assistant');
+  assert.match(result.messages[0].content, /暂时无法读取历史消息/);
+  assert.equal(result.total, 1);
+  assert.equal(result.warning.code, 'thread-file-locked');
+  assert.match(result.warning.message, /temporarily locked/i);
+});
+
 test('messagesFromRolloutJsonl converts proposed plan answers into standalone plan UI messages', () => {
   const content = [
     JSON.stringify({

@@ -156,7 +156,11 @@ export async function refreshCodexCache() {
         console.warn('[sessions] Failed to list desktop threads:', error.message);
         return [];
       }),
-      readLocalSessionThreads({ limit: 1000 }).catch((error) => {
+      readLocalSessionThreads({
+        limit: 1000,
+        threadWorkspaceRootHints: workspaceState.threadWorkspaceRootHints || {},
+        threadPermissionWorkspaceRoots: workspaceState.threadPermissionWorkspaceRoots || {}
+      }).catch((error) => {
         console.warn('[sessions] Failed to read local session index:', error.message);
         return [];
       })

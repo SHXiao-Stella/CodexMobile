@@ -384,7 +384,8 @@ export function desktopBridgeStatusForAppServerTransport(transport = {}, { check
       sendToOpenDesktopThread: mode === 'desktop-proxy',
       createThread: connected && mode !== 'isolated-dev',
       headless: mode === 'headless-local',
-      backgroundCodex: mode === 'headless-local'
+      backgroundCodex: mode === 'headless-local',
+      mobileDesktopApprovals: false
     }
   };
 }
@@ -403,7 +404,8 @@ export function desktopIpcBridgeStatus(ipc = {}, { checkedAt = new Date().toISOS
       createThread: false,
       createThreadReason: '请先在电脑端新建或打开线程，然后从手机继续发送。',
       createThreadViaBackground: true,
-      backgroundCodex: true
+      backgroundCodex: true,
+      mobileDesktopApprovals: true
     }
   };
 }
@@ -435,7 +437,8 @@ export async function getDesktopBridgeStatus({ force = false } = {}) {
     capabilities: {
       read: false,
       sendToOpenDesktopThread: false,
-      createThread: false
+      createThread: false,
+      mobileDesktopApprovals: false
     }
   };
   if (transport.mode === 'unavailable') {

@@ -34,6 +34,18 @@ test('shouldUseWebNotification only fires when permission and context allow it',
   assert.equal(shouldUseWebNotification({ enabled: false, permission: 'granted', visibilityState: 'hidden' }), false);
 });
 
+test('notificationFromPayload reports desktop approval requests as user action', () => {
+  const notification = notificationFromPayload({
+    type: 'desktop-approval-request',
+    kind: 'command',
+    summary: 'Get-Date'
+  });
+
+  assert.equal(notification.level, 'warning');
+  assert.equal(notification.title, '需要审批桌面权限');
+  assert.equal(notification.body, 'Get-Date');
+});
+
 test('user input messages are upserted and marked answered by request identity', () => {
   const request = {
     type: 'user-input-request',

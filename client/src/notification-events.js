@@ -135,6 +135,13 @@ export function notificationFromPayload(payload = {}) {
       body: payload.questions?.[0]?.question || 'Codex 正在等待你的选择。'
     };
   }
+  if (payload.type === 'desktop-approval-request') {
+    return {
+      level: 'warning',
+      title: '需要审批桌面权限',
+      body: payload.summary || payload.reason || 'Codex Desktop 正在等待权限审批。'
+    };
+  }
   if ((payload.type === 'status-update' || payload.type === 'activity-update') && payloadNeedsUserInput(payload)) {
     return {
       level: 'warning',

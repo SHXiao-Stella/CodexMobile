@@ -133,6 +133,31 @@ test('chat route handler routes plan implementation responses through chat servi
   assert.equal(calls[0].itemId, 'plan-request-1');
 });
 
+test('chat route handler routes desktop approval decisions through approval service', async () => {
+  const calls = [];
+  const handler = createChatRouteHandler({
+    chatService: {},
+    desktopApprovalService: {
+      async decide(id, decision) {
+        calls.push({ id, decision });
+        return { ok: true };
+      }
+    },
+    remoteAddress: () => '127.0.0.1'
+  });
+
+  const req = createRequest('POST', { decision: 'approve' });
+  const res = createResponse();
+
+  assert.equal(
+    await callWithBody(handler, req, res, new URL('http://local/api/chat/approvals/thread-1%3Areq-1/decision')),
+    true
+  );
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(JSON.parse(res.body), { accepted: true });
+  assert.deepEqual(calls, [{ id: 'thread-1:req-1', decision: 'approve' }]);
+});
+
 test('file route handler searches project files and preserves project not found response', async () => {
   const handler = createFileRouteHandler({
     getProject(projectId) {

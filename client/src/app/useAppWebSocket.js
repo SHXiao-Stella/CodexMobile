@@ -9,6 +9,10 @@ import {
 } from '../chat/activity-model.js';
 import { sameUserMessageContent } from '../chat/message-identity.js';
 import { markUserInputMessageResolved, upsertUserInputMessage } from '../notification-events.js';
+import {
+  removePendingDesktopApproval,
+  upsertPendingDesktopApproval
+} from '../desktop-approval-state.js';
 import { mergeContextStatus, normalizeContextStatus } from './context-status.js';
 
 const EXTERNAL_THREAD_SOURCES = new Set(['desktop-ipc', 'desktop-thread', 'headless-local']);
@@ -317,6 +321,23 @@ export function useAppWebSocket({
         if (payload.type === 'user-input-resolved') {
           if (payloadMatchesCurrentConversation(payload)) {
             setMessages((current) => markUserInputMessageResolved(current, payload));
+          }
+          return;
+        }
+        if (payload.type === 'desktop-approval-request') {
+          notifyFromPayload(payload);
+          setStatus((current) => upsertPendingDesktopApproval(current, payload));
+          return;
+        }
+        if (payload.type === 'desktop-approval-resolved' || payload.type === 'desktop-approval-stale') {
+          setStatus((current) => removePendingDesktopApproval(current, payload.id));
+          if (payload.type === 'desktop-approval-stale') {
+            notifyFromPayload({
+              type: 'status-update',
+              status: 'completed',
+              label: '桌面审批已结束',
+              detail: payload.detail || '该请求已在桌面端处理或不再等待审批。'
+            });
           }
           return;
         }

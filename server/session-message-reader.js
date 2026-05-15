@@ -200,7 +200,42 @@ function desktopThreadHasMessages(thread) {
 
 function canFallbackToRollout(error) {
   const message = String(error?.message || '').toLowerCase();
-  return error?.statusCode === 404 || message.includes('thread not loaded') || message.includes('desktop thread not found');
+  return (
+    error?.statusCode === 404 ||
+    isAccessDeniedThreadReadError(error) ||
+    message.includes('thread not loaded') ||
+    message.includes('desktop thread not found')
+  );
+}
+
+function isAccessDeniedThreadReadError(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return (
+    error?.code === 'EPERM' ||
+    message.includes('access denied') ||
+    message.includes('operation not permitted') ||
+    message.includes('os error 5') ||
+    message.includes('拒绝访问')
+  );
+}
+
+function lockedThreadShell(sessionId, session = null) {
+  return {
+    id: sessionId,
+    path: session?.filePath || session?.path || null,
+    turns: [],
+    messages: [{
+      id: `${sessionId}-thread-file-locked`,
+      role: 'assistant',
+      content: '暂时无法读取历史消息：这个线程正在被 Codex Desktop 使用，Windows 当前拒绝读取它的会话文件。你仍然可以在这里继续发送消息到桌面当前线程。',
+      timestamp: new Date().toISOString(),
+      sessionId
+    }],
+    warning: {
+      code: 'thread-file-locked',
+      message: 'This active Codex Desktop thread is temporarily locked by Codex Desktop, so history cannot be read right now.'
+    }
+  };
 }
 
 export function publicContextState(state = {}, configContext = {}) {
@@ -475,17 +510,19 @@ export function createSessionMessageReader({
   sortDesktopActivitySteps = defaultSortDesktopActivitySteps,
   filterDeletedMessages = defaultFilterDeletedMessages,
   readRolloutContextState: readRolloutContextStateImpl = readRolloutContextState,
+  readRolloutThread = readRolloutThreadFromFile,
   resolveSessionThread = async () => null,
   getConfigContext = () => ({})
 } = {}) {
   async function readThread(sessionId) {
+    let desktopReadError = null;
     try {
       const response = await readDesktopThread(sessionId, { includeTurns: true });
       if (response?.thread) {
         if (!desktopThreadHasMessages(response.thread)) {
           const session = await resolveSessionThread(sessionId);
           const filePath = session?.filePath || session?.path || response.thread.path || '';
-          const fallbackThread = await readRolloutThreadFromFile(filePath, sessionId).catch(() => null);
+          const fallbackThread = await readRolloutThread(filePath, sessionId).catch(() => null);
           if (fallbackThread && desktopThreadHasMessages(fallbackThread)) {
             return fallbackThread;
           }
@@ -496,13 +533,21 @@ export function createSessionMessageReader({
       if (!canFallbackToRollout(error)) {
         throw error;
       }
+      desktopReadError = error;
     }
 
     const session = await resolveSessionThread(sessionId);
     const filePath = session?.filePath || session?.path || '';
-    const thread = await readRolloutThreadFromFile(filePath, sessionId).catch(() => null);
+    let rolloutReadError = null;
+    const thread = await readRolloutThread(filePath, sessionId).catch((error) => {
+      rolloutReadError = error;
+      return null;
+    });
     if (thread) {
       return thread;
+    }
+    if (isAccessDeniedThreadReadError(desktopReadError) || isAccessDeniedThreadReadError(rolloutReadError)) {
+      return lockedThreadShell(sessionId, session);
     }
     const error = new Error('Desktop thread not found');
     error.statusCode = 404;
@@ -536,7 +581,8 @@ export function createSessionMessageReader({
     const contextState = await readRolloutContextStateImpl(thread.path, sessionId);
     return {
       ...paginateMessages(filterDeletedMessages(orderedMessages, deletedIds), { limit, offset, latest }),
-      context: publicContextState(contextState, getConfigContext() || {})
+      context: publicContextState(contextState, getConfigContext() || {}),
+      warning: thread.warning || null
     };
   }
 

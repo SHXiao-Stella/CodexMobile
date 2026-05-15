@@ -233,3 +233,248 @@ test('submitDesktopFollowerUserInput sends the desktop IPC response frame', asyn
   await new Promise((resolve) => server.close(resolve));
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+test('desktop ipc tracks approval requests from thread stream state snapshots', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-ipc-test-'));
+  const socketPath = testSocketPath(dir);
+  const server = net.createServer();
+  await new Promise((resolve) => server.listen(socketPath, resolve));
+
+  const accepted = new Promise((resolve) => server.once('connection', resolve));
+  const client = new DesktopIpcClient({ clientType: 'codexmobile-test', socketPath });
+  const connected = client.connect({ timeoutMs: 1000 });
+  const socket = await accepted;
+  const init = await readFrame(socket);
+  socket.write(frameFor({
+    type: 'response',
+    requestId: init.requestId,
+    resultType: 'success',
+    method: 'initialize',
+    result: { clientId: 'client-1' }
+  }));
+  await connected;
+
+  const upserted = new Promise((resolve) => client.once('requestUpserted', resolve));
+  const stateChanged = new Promise((resolve) => client.once('conversationStateChanged', resolve));
+  socket.write(frameFor({
+    type: 'broadcast',
+    method: 'thread-stream-state-changed',
+    sourceClientId: 'owner-1',
+    params: {
+      conversationId: 'thread-1',
+      change: {
+        type: 'snapshot',
+        conversationState: {
+          requests: [{
+            id: 'req-1',
+            method: 'item/commandExecution/requestApproval',
+            params: {
+              turnId: 'turn-1',
+              itemId: 'item-1',
+              command: 'Get-Date',
+              cwd: 'D:\\Research\\Project'
+            }
+          }]
+        }
+      }
+    }
+  }));
+  const snapshot = await upserted;
+
+  assert.equal(snapshot.threadId, 'thread-1');
+  assert.equal(snapshot.requestId, 'req-1');
+  assert.equal(snapshot.request.params.threadId, 'thread-1');
+  assert.equal(snapshot.request.params.conversationId, 'thread-1');
+  assert.equal(client.hasRequest('thread-1', 'req-1'), true);
+  assert.equal(client.getOwnerClientId('thread-1'), 'owner-1');
+  assert.equal(client.listRequests().length, 1);
+  assert.equal(Array.isArray(client.getConversationState('thread-1').requests), true);
+
+  client.close();
+  socket.destroy();
+  await new Promise((resolve) => server.close(resolve));
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('desktop ipc emits requestRemoved when thread state patches remove a request', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-ipc-test-'));
+  const socketPath = testSocketPath(dir);
+  const server = net.createServer();
+  await new Promise((resolve) => server.listen(socketPath, resolve));
+
+  const accepted = new Promise((resolve) => server.once('connection', resolve));
+  const client = new DesktopIpcClient({ clientType: 'codexmobile-test', socketPath });
+  const connected = client.connect({ timeoutMs: 1000 });
+  const socket = await accepted;
+  const init = await readFrame(socket);
+  socket.write(frameFor({
+    type: 'response',
+    requestId: init.requestId,
+    resultType: 'success',
+    method: 'initialize',
+    result: { clientId: 'client-1' }
+  }));
+  await connected;
+
+  const upserted = new Promise((resolve) => client.once('requestUpserted', resolve));
+  socket.write(frameFor({
+    type: 'broadcast',
+    method: 'thread-stream-state-changed',
+    sourceClientId: 'owner-1',
+    params: {
+      conversationId: 'thread-1',
+      change: {
+        type: 'snapshot',
+        conversationState: {
+          requests: [{
+            id: 'req-1',
+            method: 'item/commandExecution/requestApproval',
+            params: { turnId: 'turn-1', itemId: 'item-1', command: 'Get-Date' }
+          }]
+        }
+      }
+    }
+  }));
+  await upserted;
+
+  const removed = new Promise((resolve) => client.once('requestRemoved', resolve));
+  socket.write(frameFor({
+    type: 'broadcast',
+    method: 'thread-stream-state-changed',
+    sourceClientId: 'owner-1',
+    params: {
+      conversationId: 'thread-1',
+      change: {
+        type: 'patches',
+        patches: [{ op: 'remove', path: ['requests', 0] }]
+      }
+    }
+  }));
+  const snapshot = await removed;
+
+  assert.equal(snapshot.threadId, 'thread-1');
+  assert.equal(snapshot.requestId, 'req-1');
+  assert.equal(snapshot.request.method, 'item/commandExecution/requestApproval');
+  assert.equal(client.hasRequest('thread-1', 'req-1'), false);
+  assert.equal(client.listRequests().length, 0);
+
+  client.close();
+  socket.destroy();
+  await new Promise((resolve) => server.close(resolve));
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('desktop ipc approval decision helpers target the desktop thread owner', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-ipc-test-'));
+  const socketPath = testSocketPath(dir);
+  const server = net.createServer();
+  await new Promise((resolve) => server.listen(socketPath, resolve));
+
+  const accepted = new Promise((resolve) => server.once('connection', resolve));
+  const client = new DesktopIpcClient({ clientType: 'codexmobile-test', socketPath });
+  const connected = client.connect({ timeoutMs: 1000 });
+  const socket = await accepted;
+  const init = await readFrame(socket);
+  socket.write(frameFor({
+    type: 'response',
+    requestId: init.requestId,
+    resultType: 'success',
+    method: 'initialize',
+    result: { clientId: 'client-1' }
+  }));
+  await connected;
+
+  const stateChanged = new Promise((resolve) => client.once('conversationStateChanged', resolve));
+  socket.write(frameFor({
+    type: 'broadcast',
+    method: 'thread-stream-state-changed',
+    sourceClientId: 'owner-1',
+    params: {
+      conversationId: 'thread-1',
+      change: { type: 'snapshot', conversationState: { requests: [] } }
+    }
+  }));
+  await stateChanged;
+
+  const submitted = client.sendCommandApprovalDecision('thread-1', 'req-1', 'accept');
+  const request = await readFrame(socket);
+  socket.write(frameFor({
+    type: 'response',
+    requestId: request.requestId,
+    resultType: 'success',
+    method: 'thread-follower-command-approval-decision',
+    result: { accepted: true }
+  }));
+  const result = await submitted;
+
+  assert.deepEqual(result, { accepted: true });
+  assert.equal(request.type, 'request');
+  assert.equal(request.method, 'thread-follower-command-approval-decision');
+  assert.equal(request.version, 1);
+  assert.equal(request.targetClientId, 'owner-1');
+  assert.deepEqual(request.params, {
+    conversationId: 'thread-1',
+    requestId: 'req-1',
+    decision: 'accept'
+  });
+
+  client.close();
+  socket.destroy();
+  await new Promise((resolve) => server.close(resolve));
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('desktop ipc approval decision helpers preserve non-numeric ids and coerce numeric ids', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-ipc-test-'));
+  const socketPath = testSocketPath(dir);
+  const server = net.createServer();
+  await new Promise((resolve) => server.listen(socketPath, resolve));
+  let socket = null;
+  let client = null;
+
+  try {
+    const accepted = new Promise((resolve) => server.once('connection', resolve));
+    client = new DesktopIpcClient({ clientType: 'codexmobile-test', socketPath });
+    const connected = client.connect({ timeoutMs: 1000 });
+    socket = await accepted;
+    const init = await readFrame(socket);
+    socket.write(frameFor({
+      type: 'response',
+      requestId: init.requestId,
+      resultType: 'success',
+      method: 'initialize',
+      result: { clientId: 'client-1' }
+    }));
+    await connected;
+
+    const first = client.sendCommandApprovalDecision('thread-1', 'req-1', 'accept');
+    const firstRequest = await readFrame(socket);
+    socket.write(frameFor({
+      type: 'response',
+      requestId: firstRequest.requestId,
+      resultType: 'success',
+      method: 'thread-follower-command-approval-decision',
+      result: { accepted: true }
+    }));
+    await first;
+
+    const second = client.sendCommandApprovalDecision('thread-1', '101', 'accept');
+    const secondRequest = await readFrame(socket);
+    socket.write(frameFor({
+      type: 'response',
+      requestId: secondRequest.requestId,
+      resultType: 'success',
+      method: 'thread-follower-command-approval-decision',
+      result: { accepted: true }
+    }));
+    await second;
+
+    assert.equal(firstRequest.params.requestId, 'req-1');
+    assert.equal(secondRequest.params.requestId, 101);
+  } finally {
+    client?.close();
+    socket?.destroy();
+    await new Promise((resolve) => server.close(resolve));
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

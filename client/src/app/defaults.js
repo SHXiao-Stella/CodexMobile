@@ -12,6 +12,7 @@ export const DEFAULT_STATUS = {
   reasoningEffort: 'xhigh',
   models: [{ value: 'gpt-5.5', label: 'gpt-5.5' }],
   skills: [],
+  pendingApprovals: [],
   docs: {
     provider: 'feishu',
     integration: 'lark-cli',
