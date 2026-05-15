@@ -1,15 +1,6 @@
 import { Check, Terminal, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
-
-function approvalKindLabel(kind) {
-  if (kind === 'file') {
-    return '需要批准文件修改';
-  }
-  if (kind === 'permissions') {
-    return '需要批准权限';
-  }
-  return '需要批准命令';
-}
+import { desktopApprovalErrorView, desktopApprovalView } from '../desktop-approval-display.js';
 
 export function DesktopApprovalBanner({ approvals = [], onDecision }) {
   const pending = useMemo(
@@ -26,6 +17,7 @@ export function DesktopApprovalBanner({ approvals = [], onDecision }) {
 
   const extraCount = Math.max(0, pending.length - 1);
   const busy = Boolean(busyDecision);
+  const view = desktopApprovalView(approval);
 
   async function submit(decision) {
     setBusyDecision(decision);
@@ -33,7 +25,7 @@ export function DesktopApprovalBanner({ approvals = [], onDecision }) {
     try {
       await onDecision?.(approval, decision);
     } catch (submitError) {
-      setError(submitError.message || '审批发送失败，请重试。');
+      setError(desktopApprovalErrorView(submitError).inline || submitError.message || '审批发送失败，请重试。');
     } finally {
       setBusyDecision('');
     }
@@ -46,11 +38,11 @@ export function DesktopApprovalBanner({ approvals = [], onDecision }) {
       </div>
       <div className="desktop-approval-body">
         <div className="desktop-approval-title">
-          <span>{approvalKindLabel(approval.kind)}</span>
+          <span>{view.title}</span>
           {extraCount ? <small>另有 {extraCount} 条待处理</small> : null}
         </div>
-        <div className="desktop-approval-summary">{approval.summary || approval.reason || 'Codex Desktop 正在等待审批'}</div>
-        {approval.cwd ? <div className="desktop-approval-meta">{approval.cwd}</div> : null}
+        <div className="desktop-approval-summary">{view.primary}</div>
+        {view.secondary ? <div className="desktop-approval-meta">{view.secondary}</div> : null}
         {error ? <div className="desktop-approval-error">{error}</div> : null}
       </div>
       <div className="desktop-approval-actions">

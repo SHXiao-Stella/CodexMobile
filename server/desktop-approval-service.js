@@ -87,10 +87,10 @@ function commandRemainder(tokens, index) {
   return tokens.slice(index).join(' ').trim();
 }
 
-function unwrapShellCommand(value) {
+function shellWrappedCommandInfo(value) {
   const tokens = splitCommandLine(value);
   if (tokens.length < 2) {
-    return '';
+    return { command: '', runner: '' };
   }
   const executable = commandExecutableName(tokens[0]);
   if (executable === 'powershell.exe' || executable === 'powershell' || executable === 'pwsh.exe' || executable === 'pwsh') {
@@ -98,26 +98,34 @@ function unwrapShellCommand(value) {
       const normalized = token.toLowerCase();
       return index > 0 && (normalized === '-command' || normalized === '-c');
     });
-    return commandIndex >= 0 ? commandRemainder(tokens, commandIndex + 1) : '';
+    return {
+      command: commandIndex >= 0 ? commandRemainder(tokens, commandIndex + 1) : '',
+      runner: 'PowerShell'
+    };
   }
   if (executable === 'cmd.exe' || executable === 'cmd') {
     const commandIndex = tokens.findIndex((token, index) => {
       const normalized = token.toLowerCase();
       return index > 0 && (normalized === '/c' || normalized === '-c');
     });
-    return commandIndex >= 0 ? commandRemainder(tokens, commandIndex + 1) : '';
+    return {
+      command: commandIndex >= 0 ? commandRemainder(tokens, commandIndex + 1) : '',
+      runner: 'CMD'
+    };
   }
-  return '';
+  return { command: '', runner: '' };
 }
 
-function commandSummary(params = {}) {
+function commandDetails(params = {}) {
   const command = params.command;
-  if (Array.isArray(command)) {
-    const summary = command.map((part) => String(part)).join(' ').trim();
-    return unwrapShellCommand(summary) || summary;
-  }
-  const summary = stringOrEmpty(command);
-  return (summary ? unwrapShellCommand(summary) || summary : '') || stringOrEmpty(params.reason) || 'Command approval requested';
+  const raw = Array.isArray(command)
+    ? command.map((part) => String(part)).join(' ').trim()
+    : stringOrEmpty(command);
+  const wrapped = shellWrappedCommandInfo(raw);
+  return {
+    summary: (raw ? wrapped.command || raw : '') || stringOrEmpty(params.reason) || 'Command approval requested',
+    runner: wrapped.command ? wrapped.runner : ''
+  };
 }
 
 function fileSummary(params = {}) {
@@ -138,6 +146,32 @@ function permissionsSummary(params = {}) {
   const permissions = params.permissions && typeof params.permissions === 'object' ? params.permissions : {};
   const keys = Object.keys(permissions);
   return keys.length ? `Permissions requested: ${keys.join(', ')}` : 'Permission approval requested';
+}
+
+function approvalTitle(kind) {
+  if (kind === 'file') {
+    return '需要批准文件修改';
+  }
+  if (kind === 'permissions') {
+    return '需要批准权限';
+  }
+  return '需要批准命令';
+}
+
+function compactSecondary(parts) {
+  return parts.map(stringOrEmpty).filter(Boolean).join(' · ');
+}
+
+function approvalDisplay(kind, summary, params = {}, commandInfo = null) {
+  const cwd = stringOrEmpty(params.cwd);
+  const runner = commandInfo?.runner || '';
+  return {
+    title: approvalTitle(kind),
+    primary: summary,
+    secondary: kind === 'command'
+      ? compactSecondary([runner, cwd])
+      : compactSecondary([cwd])
+  };
 }
 
 export function desktopApprovalId(threadId, requestId) {
@@ -161,9 +195,10 @@ export function normalizeDesktopApprovalRequest(snapshot = {}, { now = () => Dat
 
   const turnId = stringOrEmpty(params.turnId || params.itemId || requestId);
   const itemId = stringOrEmpty(params.itemId || requestId);
+  const commandInfo = kind === 'command' ? commandDetails(params) : null;
   const summary =
     kind === 'command'
-      ? commandSummary(params)
+      ? commandInfo.summary
       : kind === 'file'
         ? fileSummary(params)
         : permissionsSummary(params);
@@ -180,6 +215,7 @@ export function normalizeDesktopApprovalRequest(snapshot = {}, { now = () => Dat
     itemId,
     kind,
     summary,
+    display: approvalDisplay(kind, summary, params, commandInfo),
     cwd: stringOrEmpty(params.cwd) || null,
     reason: stringOrEmpty(params.reason) || null,
     source: 'desktop-ipc',
@@ -282,6 +318,35 @@ function isTransientDesktopApprovalError(error) {
     message.includes('disconnected') ||
     message.includes('closed')
   );
+}
+
+const APPROVAL_FAILURES = {
+  'not-found': {
+    code: 'desktop_approval_not_found',
+    error: '审批请求已过期'
+  },
+  stale: {
+    code: 'desktop_approval_stale',
+    error: '桌面端已处理这条审批'
+  },
+  transient: {
+    code: 'desktop_approval_transient',
+    error: '桌面端连接中断或超时，请稍后重试'
+  },
+  failed: {
+    code: 'desktop_approval_failed',
+    error: '审批发送失败，请在电脑端处理'
+  }
+};
+
+function approvalFailure(reason) {
+  const failure = APPROVAL_FAILURES[reason] || APPROVAL_FAILURES.failed;
+  return {
+    ok: false,
+    reason,
+    code: failure.code,
+    error: failure.error
+  };
 }
 
 export class DesktopApprovalService {
@@ -422,7 +487,7 @@ export class DesktopApprovalService {
   async decide(id, decision) {
     const approval = this.records.get(stringOrEmpty(id));
     if (!approval) {
-      return { ok: false, reason: 'not-found' };
+      return approvalFailure('not-found');
     }
     const mapped = mapDesktopApprovalDecision(approval, decision);
     const logContext = {
@@ -464,12 +529,12 @@ export class DesktopApprovalService {
           stale: true,
           detail: '已在桌面端处理或不再等待审批'
         });
-        return { ok: false, reason: 'stale' };
+        return approvalFailure('stale');
       }
       if (isTransientDesktopApprovalError(error)) {
-        return { ok: false, reason: 'transient', error: error.message || 'Desktop approval decision failed' };
+        return approvalFailure('transient');
       }
-      return { ok: false, reason: 'failed', error: error.message || 'Desktop approval decision failed' };
+      return approvalFailure('failed');
     }
 
     this.records.delete(approval.id);

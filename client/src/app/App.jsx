@@ -25,6 +25,7 @@ import { nextSyncedComposerSettings } from './model-sync.js';
 import { rememberSelectedSession } from './selection-persistence.js';
 import { markUserInputMessageResolved } from '../notification-events.js';
 import { removePendingDesktopApproval } from '../desktop-approval-state.js';
+import { desktopApprovalErrorView, desktopApprovalView } from '../desktop-approval-display.js';
 import {
   buildComposerRunStatus,
   emptyContextStatus,
@@ -521,6 +522,7 @@ export default function App() {
     if (!id) {
       return;
     }
+    const approvalView = desktopApprovalView(approval);
     try {
       await apiFetch(`/api/chat/approvals/${encodeURIComponent(id)}/decision`, {
         method: 'POST',
@@ -530,22 +532,23 @@ export default function App() {
       showToast({
         level: decision === 'deny' ? 'info' : 'success',
         title: decision === 'deny' ? '已拒绝桌面权限' : '已允许桌面权限',
-        body: approval.summary || ''
+        body: approvalView.primary || ''
       });
     } catch (error) {
-      if (error.status === 404) {
+      const errorView = desktopApprovalErrorView(error);
+      if (errorView.removeApproval) {
         setStatus((current) => removePendingDesktopApproval(current, id));
         showToast({
           level: 'warning',
-          title: '审批已失效',
-          body: '该请求已在桌面端处理或不再等待审批。'
+          title: errorView.title,
+          body: errorView.body
         });
         return;
       }
       showToast({
         level: 'error',
-        title: '审批发送失败',
-        body: error.message || '请稍后重试。'
+        title: errorView.title,
+        body: errorView.body || error.message || '请稍后重试。'
       });
       throw error;
     }

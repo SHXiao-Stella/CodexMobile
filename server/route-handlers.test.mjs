@@ -158,6 +158,88 @@ test('chat route handler routes desktop approval decisions through approval serv
   assert.deepEqual(calls, [{ id: 'thread-1:req-1', decision: 'approve' }]);
 });
 
+test('chat route handler maps desktop approval failure reasons to friendly responses', async () => {
+  const cases = [
+    {
+      serviceResult: {
+        ok: false,
+        reason: 'not-found',
+        code: 'desktop_approval_not_found',
+        error: '审批请求已过期'
+      },
+      statusCode: 404,
+      body: {
+        error: '审批请求已过期',
+        code: 'desktop_approval_not_found',
+        reason: 'not-found'
+      }
+    },
+    {
+      serviceResult: {
+        ok: false,
+        reason: 'stale',
+        code: 'desktop_approval_stale',
+        error: '桌面端已处理这条审批'
+      },
+      statusCode: 404,
+      body: {
+        error: '桌面端已处理这条审批',
+        code: 'desktop_approval_stale',
+        reason: 'stale'
+      }
+    },
+    {
+      serviceResult: {
+        ok: false,
+        reason: 'transient',
+        code: 'desktop_approval_transient',
+        error: '桌面端连接中断或超时，请稍后重试'
+      },
+      statusCode: 503,
+      body: {
+        error: '桌面端连接中断或超时，请稍后重试',
+        code: 'desktop_approval_transient',
+        reason: 'transient'
+      }
+    },
+    {
+      serviceResult: {
+        ok: false,
+        reason: 'failed',
+        code: 'desktop_approval_failed',
+        error: '审批发送失败，请在电脑端处理'
+      },
+      statusCode: 502,
+      body: {
+        error: '审批发送失败，请在电脑端处理',
+        code: 'desktop_approval_failed',
+        reason: 'failed'
+      }
+    }
+  ];
+
+  for (const item of cases) {
+    const handler = createChatRouteHandler({
+      chatService: {},
+      desktopApprovalService: {
+        async decide() {
+          return item.serviceResult;
+        }
+      },
+      remoteAddress: () => '127.0.0.1'
+    });
+    const req = createRequest('POST', { decision: 'approve' });
+    const res = createResponse();
+
+    assert.equal(
+      await callWithBody(handler, req, res, new URL('http://local/api/chat/approvals/thread-1%3Areq-1/decision')),
+      true
+    );
+    assert.equal(res.statusCode, item.statusCode);
+    assert.deepEqual(JSON.parse(res.body), item.body);
+  }
+});
+
 test('file route handler searches project files and preserves project not found response', async () => {
   const handler = createFileRouteHandler({
     getProject(projectId) {

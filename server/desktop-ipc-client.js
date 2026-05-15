@@ -667,7 +667,7 @@ export async function requestDesktopThreadSnapshotRefresh(
   } catch (error) {
     return {
       sent: false,
-      reason: error.message || '妗岄潰绔?Codex IPC 骞挎挱澶辫触'
+      reason: error.message || '桌面端 Codex IPC 广播失败'
     };
   } finally {
     client.close();

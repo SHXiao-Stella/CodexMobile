@@ -39,6 +39,11 @@ test('normalizeDesktopApprovalRequest parses command approval requests', () => {
   assert.equal(approval.itemId, 'item-1');
   assert.equal(approval.kind, 'command');
   assert.equal(approval.summary, 'Get-Date');
+  assert.deepEqual(approval.display, {
+    title: '需要批准命令',
+    primary: 'Get-Date',
+    secondary: 'D:\\Research\\Project'
+  });
   assert.equal(approval.cwd, 'D:\\Research\\Project');
   assert.equal(approval.reason, 'Need to run Get-Date');
   assert.equal(approval.source, 'desktop-ipc');
@@ -56,7 +61,17 @@ test('normalizeDesktopApprovalRequest displays shell-wrapped commands by their i
   }));
 
   assert.equal(approval.summary, 'Get-Date -Format o');
+  assert.deepEqual(approval.display, {
+    title: '需要批准命令',
+    primary: 'Get-Date -Format o',
+    secondary: 'PowerShell · D:\\Research\\Project'
+  });
   assert.equal(cmdApproval.summary, 'npm run test');
+  assert.deepEqual(cmdApproval.display, {
+    title: '需要批准命令',
+    primary: 'npm run test',
+    secondary: 'CMD · D:\\Research\\Project'
+  });
 });
 
 test('normalizeDesktopApprovalRequest parses file and permissions approvals', () => {
@@ -93,8 +108,18 @@ test('normalizeDesktopApprovalRequest parses file and permissions approvals', ()
 
   assert.equal(fileApproval.kind, 'file');
   assert.equal(fileApproval.summary, 'Edit app.js');
+  assert.deepEqual(fileApproval.display, {
+    title: '需要批准文件修改',
+    primary: 'Edit app.js',
+    secondary: 'D:\\Research\\Project'
+  });
   assert.equal(permissionsApproval.kind, 'permissions');
   assert.equal(permissionsApproval.summary, 'Need network');
+  assert.deepEqual(permissionsApproval.display, {
+    title: '需要批准权限',
+    primary: 'Need network',
+    secondary: ''
+  });
   assert.deepEqual(permissionsApproval.permissions, { networkAccess: true });
 });
 
@@ -249,7 +274,12 @@ test('desktop approval service removes stale failures but keeps transient timeou
 
   const staleResult = await staleService.decide(desktopApprovalId('thread-1', 'req-1'), 'approve');
 
-  assert.deepEqual(staleResult, { ok: false, reason: 'stale' });
+  assert.deepEqual(staleResult, {
+    ok: false,
+    reason: 'stale',
+    code: 'desktop_approval_stale',
+    error: '桌面端已处理这条审批'
+  });
   assert.equal(staleService.listPending().length, 0);
 
   const timeoutClient = new EventEmitter();
@@ -266,5 +296,37 @@ test('desktop approval service removes stale failures but keeps transient timeou
 
   assert.equal(timeoutResult.ok, false);
   assert.equal(timeoutResult.reason, 'transient');
+  assert.equal(timeoutResult.code, 'desktop_approval_transient');
+  assert.equal(timeoutResult.error, '桌面端连接中断或超时，请稍后重试');
   assert.equal(timeoutService.listPending().length, 1);
+});
+
+test('desktop approval service reports missing and failed decisions with friendly codes', async () => {
+  const service = createDesktopApprovalService({
+    client: new EventEmitter(),
+    logger: null,
+    broadcast: () => {}
+  });
+
+  assert.deepEqual(await service.decide(desktopApprovalId('thread-1', 'missing'), 'approve'), {
+    ok: false,
+    reason: 'not-found',
+    code: 'desktop_approval_not_found',
+    error: '审批请求已过期'
+  });
+
+  const failedClient = new EventEmitter();
+  failedClient.isReady = () => true;
+  failedClient.sendCommandApprovalDecision = async () => {
+    throw new Error('Desktop rejected decision payload');
+  };
+  const failedService = createDesktopApprovalService({ client: failedClient, logger: null, broadcast: () => {} });
+  failedService.handleRequestUpserted(commandSnapshot());
+
+  const failedResult = await failedService.decide(desktopApprovalId('thread-1', 'req-1'), 'approve');
+
+  assert.equal(failedResult.ok, false);
+  assert.equal(failedResult.reason, 'failed');
+  assert.equal(failedResult.code, 'desktop_approval_failed');
+  assert.equal(failedResult.error, '审批发送失败，请在电脑端处理');
 });

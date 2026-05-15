@@ -2,6 +2,24 @@ import { readBody, sendJson } from './http-utils.js';
 import { submitDesktopFollowerUserInput as defaultSubmitDesktopFollowerUserInput } from './desktop-ipc-client.js';
 import { normalizeDesktopUserInputSubmission } from './user-input-requests.js';
 
+function desktopApprovalFailureStatus(reason) {
+  if (reason === 'not-found' || reason === 'stale') {
+    return 404;
+  }
+  if (reason === 'transient') {
+    return 503;
+  }
+  return 502;
+}
+
+function desktopApprovalFailureBody(result = {}) {
+  return {
+    error: result.error || '审批发送失败，请在电脑端处理',
+    code: result.code || 'desktop_approval_failed',
+    reason: result.reason || 'failed'
+  };
+}
+
 export function createChatRouteHandler({
   chatService,
   remoteAddress = () => '',
@@ -84,11 +102,7 @@ export function createChatRouteHandler({
           sendJson(res, 200, { accepted: true });
           return true;
         }
-        if (result.reason === 'not-found' || result.reason === 'stale') {
-          sendJson(res, 404, { error: 'Desktop approval request not found or already handled', reason: result.reason });
-          return true;
-        }
-        sendJson(res, 502, { error: result.error || 'Failed to send desktop approval decision', reason: result.reason });
+        sendJson(res, desktopApprovalFailureStatus(result.reason), desktopApprovalFailureBody(result));
       } catch (error) {
         sendJson(res, error.statusCode || 500, { error: error.message || 'Failed to send desktop approval decision' });
       }
