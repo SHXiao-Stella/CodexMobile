@@ -4,10 +4,15 @@ All notable changes to CodexMobile are tracked here.
 
 ## Unreleased
 
+### Added
+
+- Added mobile Codex Desktop approval cards for Desktop IPC command, file-change, and permission approval requests, inspired by [NathanZane/codex-mobile](https://github.com/NathanZane/codex-mobile)'s remote approval flow.
+
 ### Changed
 
 - Changed the composer default permission mode from `bypassPermissions` to `default`, while keeping full access available as an explicit opt-in.
 - Marked Codex Desktop IPC handoff turns as steerable so mobile sends can continue an active desktop-owned turn directly.
+- Improved mobile approval command summaries by displaying common `powershell -Command` and `cmd /c` wrappers as their inner command while preserving the original Desktop approval payload.
 
 ### Fixed
 

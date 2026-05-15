@@ -8,9 +8,12 @@ Plan mode 和用户输入卡片部分也参考了 [bingqldx/CodexMobile](https:/
 
 后台子进程管理参考了 [StephenPCG/CodexMobile](https://github.com/StephenPCG/CodexMobile) 的 `process-manager` 思路，用来登记和清理 CodexMobile 服务内部启动的 Codex app-server、lark-cli、Git diff 和本地语音合成子进程。本 fork 目前只迁移这部分稳定性能力，没有迁移它的 Web Terminal、runtime config、Homebrew packaging 或 ASR Docker 管理。
 
+手机端审批功能借鉴和参考了 [NathanZane/codex-mobile](https://github.com/NathanZane/codex-mobile) 的远程审批思路。NathanZane 的项目把 Codex 的 approval request 镜像到 Discord，并允许在 Discord 里批准命令请求；本 fork 沿用“把桌面端待审批请求投递到移动端并从移动端回传决策”的交互方向，但实现方式改为 CodexMobile Web 卡片 + 本机 Codex Desktop IPC。当前已经可以在手机端看到 Desktop IPC 暴露的命令、文件和权限审批请求，并从手机端批准或拒绝；审批结果会回传给 Codex Desktop，桌面端待审批项随之继续或取消。
+
 ## 这个 Fork 新增了什么
 
 - **Windows Codex Desktop IPC 接入**：在 Desktop IPC 可用时，手机端可以向已有 Codex Desktop 线程发送和 steer 消息。
+- **手机端 Desktop 审批卡片**：Desktop IPC 暴露的 `item/commandExecution/requestApproval`、`item/fileChange/requestApproval` 和 `item/permissions/requestApproval` 会显示为手机端审批卡片，支持从手机端允许或拒绝。命令审批会保留 Desktop 原始 decision payload，同时把常见 `powershell -Command` / `cmd /c` wrapper 展示成更接近桌面端的命令摘要。
 - **本地历史线程 fallback**：当 Codex app-server 的 `thread/list` 读不到历史线程时，自动从 `~/.codex/session_index.jsonl` 和 `~/.codex/sessions/**/*.jsonl` 重建线程列表。
 - **隐藏 Windows 子进程窗口**：启动 Codex app-server 和 Git helper 时隐藏子进程窗口，避免手机连接或刷新时反复弹 `cmd` 窗口。
 - **后台子进程管理**：服务关闭时会先关闭 WebSocket/HTTP/HTTPS，再清理仍在运行的 Codex app-server、lark-cli、Git diff 和本地语音合成子进程，减少后台残留。
@@ -32,6 +35,15 @@ Plan mode 和用户输入卡片部分也参考了 [bingqldx/CodexMobile](https:/
 - 支持向已有 Desktop-owned 线程发送 follow-up/steer。
 - Desktop IPC 不可用时，可回退到后台 Codex runner。
 - 发送前同步选中的模型和 reasoning effort。
+
+### 桌面端审批
+
+- 通过 Desktop IPC 监听当前桌面线程里的待审批 request。
+- 支持命令执行、文件修改和权限请求三类审批卡片。
+- 手机端点击允许或拒绝后，通过 Desktop IPC follower decision 方法把决策回传给对应 Desktop-owned 线程。
+- 保留 Desktop 原始 `requestId` 类型和 `availableDecisions` payload，避免把对象型 decision 简化成普通字符串。
+- 命令卡片会尽量显示真实命令摘要，例如把 `"powershell.exe" -Command 'Get-Date -Format o'` 展示为 `Get-Date -Format o`。
+- 审批成功后，Desktop 端待审批弹窗会消失，原命令继续执行或按拒绝结果取消。
 
 ### 手机端输入区
 
@@ -81,9 +93,9 @@ Plan mode 和用户输入卡片部分也参考了 [bingqldx/CodexMobile](https:/
 ## 重要限制
 
 - 这不是公网 SaaS，也不是远程桌面。它是一个暴露在可信私有网络里的本机 Node.js bridge。
-- 当前不能审批原生 Codex Desktop GUI 自己弹出的权限请求。也就是说，如果你直接在电脑上的 Codex Desktop 窗口里发起任务，运行到一半出现桌面端权限审批，手机端不承诺能看到或处理这个审批。
+- 手机端审批依赖 Codex Desktop IPC 是否把待审批 request 暴露在线程状态里。当前已验证可以处理 Desktop IPC 暴露的命令审批；如果未来 Desktop 版本改变协议、线程没有可用 owner，或某类原生 GUI 审批不进入 IPC state，手机端仍可能看不到或无法处理。
 - 当前不能从手机端直接新建真实的 Codex Desktop GUI 线程；请先在电脑端新建或打开线程，再从手机端继续发送。
-- 手机端用户输入卡片主要覆盖 CodexMobile 自己发起或 app-server 明确广播出来的 request。
+- 手机端用户输入和审批卡片主要覆盖 CodexMobile 自己发起、app-server 明确广播出来，或 Desktop IPC 明确暴露出来的 request。
 - Desktop IPC 能力取决于当前 Codex Desktop 版本和线程是否有可用 owner。
 - Web Push 必须走 HTTPS。`http://<tailscale-ip>:3321` 可以正常打开网页，但不能保证后台通知。
 
@@ -297,4 +309,4 @@ node --test client\src\composer\composer-options.test.mjs client\src\send-state.
 windows-desktop-ipc-bridge
 ```
 
-这个分支包含 Windows Desktop IPC handoff、Plan mode/user-input cards、本地 session fallback 和 Android HTTPS Web Push 支持。
+这个分支包含 Windows Desktop IPC handoff、手机端 Desktop 审批卡片、Plan mode/user-input cards、本地 session fallback 和 Android HTTPS Web Push 支持。

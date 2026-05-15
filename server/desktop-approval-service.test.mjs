@@ -47,6 +47,18 @@ test('normalizeDesktopApprovalRequest parses command approval requests', () => {
   assert.equal(approval.createdAt, new Date(1_700_000_000_000).toISOString());
 });
 
+test('normalizeDesktopApprovalRequest displays shell-wrapped commands by their inner command', () => {
+  const approval = normalizeDesktopApprovalRequest(commandSnapshot({
+    command: '"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command \'Get-Date -Format o\''
+  }));
+  const cmdApproval = normalizeDesktopApprovalRequest(commandSnapshot({
+    command: '"C:\\Windows\\System32\\cmd.exe" /c "npm run test"'
+  }));
+
+  assert.equal(approval.summary, 'Get-Date -Format o');
+  assert.equal(cmdApproval.summary, 'npm run test');
+});
+
 test('normalizeDesktopApprovalRequest parses file and permissions approvals', () => {
   const fileApproval = normalizeDesktopApprovalRequest({
     threadId: 'thread-1',

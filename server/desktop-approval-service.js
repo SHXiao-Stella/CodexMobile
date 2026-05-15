@@ -45,12 +45,79 @@ function normalizeDecisionSpecs(rawDecisions) {
   return specs;
 }
 
+function splitCommandLine(value) {
+  const input = stringOrEmpty(value);
+  const tokens = [];
+  let current = '';
+  let quote = null;
+
+  for (const char of input) {
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current) {
+    tokens.push(current);
+  }
+  return tokens;
+}
+
+function commandExecutableName(token) {
+  return stringOrEmpty(token).split(/[\\/]/).pop().toLowerCase();
+}
+
+function commandRemainder(tokens, index) {
+  return tokens.slice(index).join(' ').trim();
+}
+
+function unwrapShellCommand(value) {
+  const tokens = splitCommandLine(value);
+  if (tokens.length < 2) {
+    return '';
+  }
+  const executable = commandExecutableName(tokens[0]);
+  if (executable === 'powershell.exe' || executable === 'powershell' || executable === 'pwsh.exe' || executable === 'pwsh') {
+    const commandIndex = tokens.findIndex((token, index) => {
+      const normalized = token.toLowerCase();
+      return index > 0 && (normalized === '-command' || normalized === '-c');
+    });
+    return commandIndex >= 0 ? commandRemainder(tokens, commandIndex + 1) : '';
+  }
+  if (executable === 'cmd.exe' || executable === 'cmd') {
+    const commandIndex = tokens.findIndex((token, index) => {
+      const normalized = token.toLowerCase();
+      return index > 0 && (normalized === '/c' || normalized === '-c');
+    });
+    return commandIndex >= 0 ? commandRemainder(tokens, commandIndex + 1) : '';
+  }
+  return '';
+}
+
 function commandSummary(params = {}) {
   const command = params.command;
   if (Array.isArray(command)) {
-    return command.map((part) => String(part)).join(' ').trim();
+    const summary = command.map((part) => String(part)).join(' ').trim();
+    return unwrapShellCommand(summary) || summary;
   }
-  return stringOrEmpty(command) || stringOrEmpty(params.reason) || 'Command approval requested';
+  const summary = stringOrEmpty(command);
+  return (summary ? unwrapShellCommand(summary) || summary : '') || stringOrEmpty(params.reason) || 'Command approval requested';
 }
 
 function fileSummary(params = {}) {
